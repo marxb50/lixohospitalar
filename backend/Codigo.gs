@@ -1,4 +1,5 @@
 const SPREADSHEET_ID_DADOS = '1BoZLO0qi0IUYG0o4Lk6Pg1wLV97OQD9vX5TBxTScUwI';
+const LOGO_FILE_ID = '1E0TnUqg-Xgq-C9dycxizF_Nt_exOvdyj';
 
 const UNIDADES = {
   Segunda: [
@@ -515,11 +516,16 @@ function buildReportDocument(payload, baseName) {
   const body = document.getBody();
 
   body.setMarginTop(36).setMarginBottom(36).setMarginLeft(32).setMarginRight(32);
-  const cityTitle = body.appendParagraph('PREFEITURA DE PARNAMIRIM');
-  cityTitle.setHeading(DocumentApp.ParagraphHeading.TITLE);
-  cityTitle.editAsText().setForegroundColor('#071c4d');
-  const departmentTitle = body.appendParagraph('SECRETARIA MUNICIPAL DE LIMPEZA URBANA • SELIM');
-  departmentTitle.editAsText().setForegroundColor('#0aa7c8').setBold(true);
+  try {
+    body.appendImage(DriveApp.getFileById(LOGO_FILE_ID).getBlob())
+      .setWidth(500).setHeight(104);
+  } catch (error) {
+    const cityTitle = body.appendParagraph('PREFEITURA DE PARNAMIRIM');
+    cityTitle.setHeading(DocumentApp.ParagraphHeading.TITLE);
+    cityTitle.editAsText().setForegroundColor('#071c4d');
+    const departmentTitle = body.appendParagraph('SECRETARIA MUNICIPAL DE LIMPEZA URBANA • SELIM');
+    departmentTitle.editAsText().setForegroundColor('#0aa7c8').setBold(true);
+  }
   const reportTitle = body.appendParagraph(`Relatório de Coleta Hospitalar — ${payload.dayName}, ${payload.monthName} de ${payload.year}`);
   reportTitle.setHeading(DocumentApp.ParagraphHeading.HEADING1);
   reportTitle.editAsText().setForegroundColor('#071c4d');
@@ -612,13 +618,15 @@ function buildReportDocument(payload, baseName) {
 
   units.forEach(unit => {
     const row = table.appendTableRow();
-    row.appendTableCell(unit);
+    row.appendTableCell(unit).setBackgroundColor('#f1f6fa')
+      .editAsText().setForegroundColor('#071c4d').setBold(false);
     const values = statuses[unit] || Array(dates.length).fill('');
     values.forEach(value => {
       const label = value === 'S' ? 'Coletado' : value === 'N' ? 'Sem coleta no dia' : '—';
       const cell = row.appendTableCell(label);
       if (value === 'S') cell.setBackgroundColor('#e6f5ed');
       if (value === 'N') cell.setBackgroundColor('#e4f8fc');
+      cell.editAsText().setForegroundColor('#071c4d').setBold(false);
     });
   });
 
