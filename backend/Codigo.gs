@@ -408,19 +408,20 @@ function getReportFolder(monthName, year) {
 }
 
 function appendReportCharts(body, summary) {
-  const pieData = Charts.newDataTable()
-    .addColumn(Charts.ColumnType.STRING, 'Resultado')
-    .addColumn(Charts.ColumnType.NUMBER, 'Quantidade')
-    .addRow(['Coletado', summary.coletado])
-    .addRow(['Não coletado', summary.naoColetado])
-    .addRow(['Sem resposta', summary.semResposta])
-    .build();
+  if (!summary.coletado) {
+    body.appendParagraph('Nenhuma coleta confirmada neste período para representar nos gráficos.');
+    return;
+  }
+  let pieData = Charts.newDataTable()
+    .addColumn(Charts.ColumnType.STRING, 'Data')
+    .addColumn(Charts.ColumnType.NUMBER, 'Coletas');
+  summary.daily.forEach(item => { pieData = pieData.addRow([item.data, item.coletado]); });
 
   const pieChart = Charts.newPieChart()
-    .setDataTable(pieData)
-    .setTitle('Resultado geral')
+    .setDataTable(pieData.build())
+    .setTitle('Distribuição das coletas confirmadas por data')
     .setDimensions(650, 330)
-    .setColors(['#158354', '#c9343b', '#dbe5ef'])
+    .setColors(['#071c4d', '#0aa7c8', '#ffdc00', '#158354', '#5272aa'])
     .setOption('pieHole', 0.45)
     .setOption('legend.position', 'bottom')
     .build();
@@ -429,14 +430,13 @@ function appendReportCharts(body, summary) {
   if (!summary.daily.length) return;
   let barDataBuilder = Charts.newDataTable()
     .addColumn(Charts.ColumnType.STRING, 'Data')
-    .addColumn(Charts.ColumnType.NUMBER, 'Coletado')
-    .addColumn(Charts.ColumnType.NUMBER, 'Não coletado');
-  summary.daily.forEach(item => { barDataBuilder = barDataBuilder.addRow([item.data, item.coletado, item.naoColetado]); });
+    .addColumn(Charts.ColumnType.NUMBER, 'Coletas confirmadas');
+  summary.daily.forEach(item => { barDataBuilder = barDataBuilder.addRow([item.data, item.coletado]); });
   const barChart = Charts.newColumnChart()
     .setDataTable(barDataBuilder.build())
-    .setTitle('Coletas por data')
+    .setTitle('Coletas confirmadas por data')
     .setDimensions(650, 330)
-    .setColors(['#158354', '#c9343b'])
+    .setColors(['#158354'])
     .setOption('legend.position', 'bottom')
     .build();
   body.appendImage(barChart.getBlob()).setWidth(480);
@@ -461,22 +461,33 @@ function buildReportDocument(payload, baseName) {
   const reportTitle = body.appendParagraph(`Relatório de Coleta Hospitalar — ${payload.dayName}, ${payload.monthName} de ${payload.year}`);
   reportTitle.setHeading(DocumentApp.ParagraphHeading.HEADING1);
   reportTitle.editAsText().setForegroundColor('#071c4d');
+  const explanation = body.appendParagraph('S confirma uma coleta. N significa que não houve coleta naquela data; algumas unidades não têm dia fixo. N não indica falha de atendimento.');
+  explanation.editAsText().setForegroundColor('#071c4d');
+
+  const unitsAttended = units.filter(unit => (statuses[unit] || []).some(value => value === 'S')).length;
+  const daysWithCollection = summary.daily.filter(item => item.coletado > 0).length;
+  const averagePerDay = dates.length ? Math.round(summary.coletado / dates.length * 10) / 10 : 0;
 
   const metrics = body.appendTable([
-    ['COLETADO', 'NÃO COLETADO', 'SEM RESPOSTA', 'TAXA DE COLETA'],
-    [String(summary.coletado), String(summary.naoColetado), String(summary.semResposta), `${summary.taxa}%`]
+    ['COLETAS S', 'UNIDADES ATENDIDAS', 'N: SEM COLETA NO DIA', 'EM BRANCO'],
+    [String(summary.coletado), String(unitsAttended), String(summary.naoColetado), String(summary.semResposta)]
   ]);
   for (let column = 0; column < 4; column += 1) {
     metrics.getCell(0, column).setBackgroundColor('#071c4d').editAsText().setForegroundColor('#ffffff').setBold(true);
     metrics.getCell(1, column).setBackgroundColor('#f1f6fa').editAsText().setForegroundColor('#071c4d').setBold(true);
   }
+  body.appendParagraph(`Dias com coleta: ${daysWithCollection} de ${dates.length} datas do roteiro. Média de ${averagePerDay} coleta(s) por dia de roteiro.`);
 
-  if (comparison && comparison.success) {
-    const previousRate = Number(comparison.anterior.taxa || 0);
-    const delta = Math.round((summary.taxa - previousRate) * 10) / 10;
+  if (comparison && comparison.success && Number(comparison.anterior.respondidos || 0) > 0) {
+    const previousCount = Number(comparison.anterior.coletado || 0);
+    const previousDays = comparison.anterior.daily.length;
+    const previousAverage = previousDays ? Math.round(previousCount / previousDays * 10) / 10 : 0;
+    const delta = summary.coletado - previousCount;
     const sign = delta > 0 ? '+' : '';
-    const comparisonParagraph = body.appendParagraph(`Comparativo com o mês anterior: ${sign}${delta} ponto(s) percentual(is). Mês anterior: ${previousRate}%.`);
+    const comparisonParagraph = body.appendParagraph(`Comparativo com o mês anterior: ${sign}${delta} coleta(s). Mês anterior: ${previousCount} coleta(s), média de ${previousAverage} por dia de roteiro.`);
     comparisonParagraph.editAsText().setForegroundColor('#071c4d').setBold(true);
+  } else {
+    body.appendParagraph('Sem registros no mês anterior para comparação.');
   }
 
   const chartsTitle = body.appendParagraph('Gráficos');
@@ -500,10 +511,10 @@ function buildReportDocument(payload, baseName) {
     row.appendTableCell(unit);
     const values = statuses[unit] || Array(dates.length).fill('');
     values.forEach(value => {
-      const label = value === 'S' ? 'Coletado' : value === 'N' ? 'Não coletado' : '—';
+      const label = value === 'S' ? 'Coletado' : value === 'N' ? 'Sem coleta no dia' : '—';
       const cell = row.appendTableCell(label);
       if (value === 'S') cell.setBackgroundColor('#e6f5ed');
-      if (value === 'N') cell.setBackgroundColor('#fdebed');
+      if (value === 'N') cell.setBackgroundColor('#e4f8fc');
     });
   });
 
