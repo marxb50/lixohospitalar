@@ -78,7 +78,10 @@ const bridge = {
 
   handleMessage(event) {
     if (!this.frame) return;
-    if (!/^https:\/\/script\.google(?:usercontent)?\.com$/.test(event.origin)) return;
+    let sender;
+    try { sender = new URL(event.origin); } catch (error) { return; }
+    const trustedGoogleHost = sender.hostname === 'script.google.com' || sender.hostname.endsWith('.googleusercontent.com');
+    if (sender.protocol !== 'https:' || !trustedGoogleHost) return;
     if (!event.data || event.data.selimHospitalarBridge !== true) return;
     if (event.data.session !== this.session) return;
 
