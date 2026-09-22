@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Ir para o conteúdo</a>
@@ -148,31 +148,44 @@
     </header>
 
     <div class="overlay-content report-content">
-      <p class="report-explainer">As unidades podem receber coleta em diferentes dias. “N” significa apenas que não houve coleta naquela data; não indica falha. Os gráficos e comparações consideram as coletas confirmadas com “S”.</p>
-      <section class="metrics-grid" id="metricsGrid" aria-label="Indicadores principais"></section>
+      <p class="report-explainer">O peso líquido do caminhão vem das observações de cada data. Ele representa o total do dia e não é dividido entre unidades. “N” significa apenas que não houve coleta naquela data.</p>
+      <section class="metrics-grid weight-metrics" id="weightMetrics" aria-label="Indicadores de peso"></section>
+      <p class="weight-review-note" id="weightReviewNote"></p>
 
       <section class="comparison-card" aria-labelledby="comparisonTitle">
         <div>
-          <span class="section-kicker">Comparativo</span>
-          <h3 id="comparisonTitle">Atividade em relação ao mês anterior</h3>
+          <span class="section-kicker">Peso em destaque</span>
+          <h3 id="comparisonTitle">Peso em relação ao mês anterior</h3>
         </div>
         <div class="comparison-result" id="comparisonResult">Calculando...</div>
       </section>
 
       <div class="charts-grid">
-        <section class="block chart-card" aria-labelledby="overallChartTitle">
+        <section class="block chart-card" aria-labelledby="dailyChartTitle">
           <span class="section-kicker">Gráfico 1</span>
+          <h3 id="dailyChartTitle">Peso líquido por data</h3>
+          <div class="bar-chart" id="dailyChart" role="img" aria-label="Peso líquido do caminhão em cada data"></div>
+        </section>
+        <section class="block chart-card" aria-labelledby="overallChartTitle">
+          <span class="section-kicker">Gráfico 2</span>
           <h3 id="overallChartTitle">Coletas confirmadas por data</h3>
           <div class="donut-wrap" id="donutChart"></div>
           <div class="chart-legend" id="donutLegend"></div>
         </section>
-
-        <section class="block chart-card" aria-labelledby="dailyChartTitle">
-          <span class="section-kicker">Gráfico 2</span>
-          <h3 id="dailyChartTitle">Quantidade de coletas por data</h3>
-          <div class="bar-chart" id="dailyChart" role="img" aria-label="Coletas confirmadas em cada data"></div>
-        </section>
       </div>
+
+      <section class="block" aria-labelledby="activityTitle">
+        <span class="section-kicker">Atividade registrada</span>
+        <h3 id="activityTitle">Coletas e unidades</h3>
+        <div class="metrics-grid secondary-metrics" id="metricsGrid" aria-label="Indicadores de coletas"></div>
+        <p class="secondary-comparison" id="activityComparison"></p>
+      </section>
+
+      <section class="block" aria-labelledby="weightDatesTitle">
+        <span class="section-kicker">Conferência do peso</span>
+        <h3 id="weightDatesTitle">Peso por data</h3>
+        <div class="table-scroll"><table class="report-table general-table"><thead><tr><th>Data</th><th>Peso líquido</th><th>Leitura da observação</th></tr></thead><tbody id="weightDateRows"></tbody></table></div>
+      </section>
 
       <section class="block" aria-labelledby="reportTableTitle">
         <div class="block-heading">
@@ -230,13 +243,14 @@
         </div>
       </div>
 
-      <p class="report-explainer">“S” confirma uma coleta. “N” informa que não houve coleta naquela data, pois algumas unidades não têm dia fixo. N não indica falha. Os números abaixo descrevem a atividade registrada, não uma meta de atendimento.</p>
-      <section class="metrics-grid general-metrics" id="generalMetrics" aria-label="Números gerais do mês"></section>
+      <p class="report-explainer">O peso líquido do caminhão está nas observações de cada data. Ele é o principal indicador deste relatório e não pode ser atribuído a uma unidade específica. “N” significa apenas que não houve coleta naquela data.</p>
+      <section class="metrics-grid weight-metrics" id="generalWeightMetrics" aria-label="Peso total e cobertura dos registros"></section>
+      <p class="weight-review-note" id="generalWeightReviewNote"></p>
 
       <section class="comparison-card" aria-labelledby="generalComparisonTitle">
         <div>
-          <span class="section-kicker">Comparação mensal</span>
-          <h3 id="generalComparisonTitle">Em relação ao mês anterior</h3>
+          <span class="section-kicker">Comparação mensal do peso</span>
+          <h3 id="generalComparisonTitle">Peso em relação ao mês anterior</h3>
         </div>
         <div class="comparison-result" id="generalComparison"></div>
       </section>
@@ -244,27 +258,34 @@
       <div class="charts-grid">
         <section class="block chart-card" aria-labelledby="generalDonutTitle">
           <span class="section-kicker">Gráfico 1</span>
-          <h3 id="generalDonutTitle">Coletas por dia da semana</h3>
+          <h3 id="generalDonutTitle">Distribuição do peso por dia da semana</h3>
           <div class="donut-wrap" id="generalDonut"></div>
           <div class="chart-legend" id="generalDonutLegend"></div>
         </section>
         <section class="block chart-card" aria-labelledby="generalWeekdayTitle">
           <span class="section-kicker">Gráfico 2</span>
-          <h3 id="generalWeekdayTitle">Coletas confirmadas por data</h3>
-          <div class="bar-chart" id="generalWeekdayChart" role="img" aria-label="Coletas confirmadas por data"></div>
+          <h3 id="generalWeekdayTitle">Peso líquido por data</h3>
+          <div class="bar-chart" id="generalWeekdayChart" role="img" aria-label="Peso líquido do caminhão por data"></div>
         </section>
       </div>
+
+      <section class="block" aria-labelledby="generalActivityTitle">
+        <span class="section-kicker">Atividade registrada</span>
+        <h3 id="generalActivityTitle">Coletas e unidades</h3>
+        <div class="metrics-grid general-metrics secondary-metrics" id="generalMetrics" aria-label="Números gerais de coletas"></div>
+        <p class="secondary-comparison" id="generalActivityComparison"></p>
+      </section>
 
       <section class="block" aria-labelledby="generalWeekdayTableTitle">
         <span class="section-kicker">Números detalhados</span>
         <h3 id="generalWeekdayTableTitle">Por dia da semana</h3>
-        <div class="table-scroll"><table class="report-table general-table"><thead><tr><th>Dia</th><th>Datas</th><th>Coletas S</th><th>Unidades atendidas</th><th>N: sem coleta no dia</th><th>Em branco</th></tr></thead><tbody id="generalWeekdayRows"></tbody></table></div>
+        <div class="table-scroll"><table class="report-table general-table"><thead><tr><th>Dia</th><th>Datas</th><th>Peso líquido</th><th>Dias com peso</th><th>Coletas S</th><th>Unidades atendidas</th><th>N: sem coleta no dia</th><th>Em branco</th></tr></thead><tbody id="generalWeekdayRows"></tbody></table></div>
       </section>
 
       <section class="block" aria-labelledby="generalDailyTitle">
         <span class="section-kicker">Cada data</span>
         <h3 id="generalDailyTitle">Resultado diário</h3>
-        <div class="table-scroll"><table class="report-table general-table"><thead><tr><th>Dia e data</th><th>Coletas S</th><th>N: sem coleta no dia</th><th>Em branco</th></tr></thead><tbody id="generalDailyRows"></tbody></table></div>
+        <div class="table-scroll"><table class="report-table general-table"><thead><tr><th>Dia e data</th><th>Peso líquido</th><th>Leitura</th><th>Coletas S</th><th>N: sem coleta no dia</th><th>Em branco</th></tr></thead><tbody id="generalDailyRows"></tbody></table></div>
       </section>
 
       <section class="block" aria-labelledby="generalUnitsTitle">
@@ -289,6 +310,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <iframe class="bridge-frame" id="bridgeFrame" title="Conexão segura com o banco de dados"></iframe>
 
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
