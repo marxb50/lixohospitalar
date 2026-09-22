@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Ir para o conteúdo</a>
@@ -73,7 +73,7 @@
       <div>
         <span class="section-kicker">Resumo e relatórios</span>
         <h2 id="reportEntryTitle">Veja os dados do período</h2>
-        <p>O relatório mantém a tabela e as observações e acrescenta gráficos e comparações.</p>
+        <p>Veja as coletas confirmadas, as unidades atendidas e as observações do mês.</p>
       </div>
       <div class="report-entry-actions">
         <button class="action-btn action-primary general-report-btn" id="btnGeneralReport" type="button">Relatório geral do mês</button>
@@ -110,7 +110,7 @@
           </div>
           <div class="status-legend" aria-label="Legenda">
             <span><i class="legend-dot legend-yes"></i>S = coletado</span>
-            <span><i class="legend-dot legend-no"></i>N = não coletado</span>
+            <span><i class="legend-dot legend-no"></i>N = sem coleta nesta data</span>
           </div>
         </div>
         <div class="unit-list" id="unitList"></div>
@@ -148,12 +148,13 @@
     </header>
 
     <div class="overlay-content report-content">
+      <p class="report-explainer">As unidades podem receber coleta em diferentes dias. “N” significa apenas que não houve coleta naquela data; não indica falha. Os gráficos e comparações consideram as coletas confirmadas com “S”.</p>
       <section class="metrics-grid" id="metricsGrid" aria-label="Indicadores principais"></section>
 
       <section class="comparison-card" aria-labelledby="comparisonTitle">
         <div>
           <span class="section-kicker">Comparativo</span>
-          <h3 id="comparisonTitle">Em relação ao mês anterior</h3>
+          <h3 id="comparisonTitle">Atividade em relação ao mês anterior</h3>
         </div>
         <div class="comparison-result" id="comparisonResult">Calculando...</div>
       </section>
@@ -161,15 +162,15 @@
       <div class="charts-grid">
         <section class="block chart-card" aria-labelledby="overallChartTitle">
           <span class="section-kicker">Gráfico 1</span>
-          <h3 id="overallChartTitle">Resultado geral</h3>
+          <h3 id="overallChartTitle">Coletas confirmadas por data</h3>
           <div class="donut-wrap" id="donutChart"></div>
           <div class="chart-legend" id="donutLegend"></div>
         </section>
 
         <section class="block chart-card" aria-labelledby="dailyChartTitle">
           <span class="section-kicker">Gráfico 2</span>
-          <h3 id="dailyChartTitle">Coletas por data</h3>
-          <div class="bar-chart" id="dailyChart" role="img" aria-label="Comparação entre coletado e não coletado em cada data"></div>
+          <h3 id="dailyChartTitle">Quantidade de coletas por data</h3>
+          <div class="bar-chart" id="dailyChart" role="img" aria-label="Coletas confirmadas em cada data"></div>
         </section>
       </div>
 
@@ -229,7 +230,7 @@
         </div>
       </div>
 
-      <p class="report-explainer">A taxa de coleta considera os registros respondidos (S ou N). “Sem resposta” mostra os lançamentos ainda não preenchidos.</p>
+      <p class="report-explainer">“S” confirma uma coleta. “N” informa que não houve coleta naquela data, pois algumas unidades não têm dia fixo. N não indica falha. Os números abaixo descrevem a atividade registrada, não uma meta de atendimento.</p>
       <section class="metrics-grid general-metrics" id="generalMetrics" aria-label="Números gerais do mês"></section>
 
       <section class="comparison-card" aria-labelledby="generalComparisonTitle">
@@ -243,34 +244,33 @@
       <div class="charts-grid">
         <section class="block chart-card" aria-labelledby="generalDonutTitle">
           <span class="section-kicker">Gráfico 1</span>
-          <h3 id="generalDonutTitle">Resultado do mês</h3>
+          <h3 id="generalDonutTitle">Coletas por dia da semana</h3>
           <div class="donut-wrap" id="generalDonut"></div>
           <div class="chart-legend" id="generalDonutLegend"></div>
         </section>
         <section class="block chart-card" aria-labelledby="generalWeekdayTitle">
           <span class="section-kicker">Gráfico 2</span>
-          <h3 id="generalWeekdayTitle">Resultado por dia da semana</h3>
-          <div class="bar-chart" id="generalWeekdayChart" role="img" aria-label="Coletado e não coletado por dia da semana"></div>
-          <div class="chart-legend"><span><i class="legend-dot legend-yes"></i>Coletado</span><span><i class="legend-dot legend-no"></i>Não coletado</span></div>
+          <h3 id="generalWeekdayTitle">Coletas confirmadas por data</h3>
+          <div class="bar-chart" id="generalWeekdayChart" role="img" aria-label="Coletas confirmadas por data"></div>
         </section>
       </div>
 
       <section class="block" aria-labelledby="generalWeekdayTableTitle">
         <span class="section-kicker">Números detalhados</span>
         <h3 id="generalWeekdayTableTitle">Por dia da semana</h3>
-        <div class="table-scroll"><table class="report-table general-table"><thead><tr><th>Dia</th><th>Datas</th><th>Previstos</th><th>Coletados</th><th>Não coletados</th><th>Sem resposta</th><th>Taxa</th></tr></thead><tbody id="generalWeekdayRows"></tbody></table></div>
+        <div class="table-scroll"><table class="report-table general-table"><thead><tr><th>Dia</th><th>Datas</th><th>Coletas S</th><th>Unidades atendidas</th><th>N: sem coleta no dia</th><th>Em branco</th></tr></thead><tbody id="generalWeekdayRows"></tbody></table></div>
       </section>
 
       <section class="block" aria-labelledby="generalDailyTitle">
         <span class="section-kicker">Cada data</span>
         <h3 id="generalDailyTitle">Resultado diário</h3>
-        <div class="table-scroll"><table class="report-table general-table"><thead><tr><th>Dia e data</th><th>Previstos</th><th>Coletados</th><th>Não coletados</th><th>Sem resposta</th><th>Taxa</th></tr></thead><tbody id="generalDailyRows"></tbody></table></div>
+        <div class="table-scroll"><table class="report-table general-table"><thead><tr><th>Dia e data</th><th>Coletas S</th><th>N: sem coleta no dia</th><th>Em branco</th></tr></thead><tbody id="generalDailyRows"></tbody></table></div>
       </section>
 
       <section class="block" aria-labelledby="generalUnitsTitle">
         <span class="section-kicker">Todas as unidades</span>
         <h3 id="generalUnitsTitle">Resultado por unidade</h3>
-        <div class="table-scroll"><table class="report-table general-table"><thead><tr><th>Unidade</th><th>Previstos</th><th>Coletados</th><th>Não coletados</th><th>Sem resposta</th><th>Taxa</th></tr></thead><tbody id="generalUnitRows"></tbody></table></div>
+        <div class="table-scroll"><table class="report-table general-table"><thead><tr><th>Unidade</th><th>Coletas S</th><th>Datas com coleta</th><th>N: sem coleta no dia</th><th>Em branco</th></tr></thead><tbody id="generalUnitRows"></tbody></table></div>
       </section>
 
       <section class="block" aria-labelledby="generalObservationsTitle">
@@ -289,6 +289,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <iframe class="bridge-frame" id="bridgeFrame" title="Conexão segura com o banco de dados"></iframe>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
