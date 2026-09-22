@@ -145,6 +145,14 @@ textarea { width: 100%; min-height: 130px; padding: 15px; color: var(--ink); bac
 .general-report-heading p { margin: 0; color: var(--muted); }
 .report-explainer { margin: 0 0 15px; padding: 13px 16px; color: var(--navy); background: var(--cyan-soft); border-left: 5px solid var(--cyan); border-radius: 10px; font-size: .86rem; line-height: 1.45; }
 .general-metrics { grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); }
+.weight-metrics { grid-template-columns: 1.35fr repeat(3, 1fr); margin-bottom: 7px; }
+.metric-card.metric-weight { color: #fff; background: linear-gradient(135deg, var(--navy), var(--navy-2)); border-top: 5px solid var(--yellow); }
+.metric-card.metric-weight .metric-label { color: #cbeaf1; }
+.metric-card.metric-weight .metric-value { color: var(--yellow); font-size: 2rem; }
+.weight-review-note { margin: 0 0 16px; color: var(--muted); font-size: .8rem; line-height: 1.4; }
+.secondary-metrics { margin: 15px 0; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); }
+.secondary-comparison { margin: 10px 0 0; padding: 12px 14px; color: var(--navy); background: var(--cyan-soft); border-radius: 12px; font-size: .86rem; line-height: 1.45; }
+.report-content .charts-grid { grid-template-columns: 1.22fr .78fr; }
 .general-table { width: 100%; }
 .general-table th:first-child, .general-table td:first-child { min-width: 155px; }
 .general-table tbody th { text-align: left; background: #fff; color: var(--navy); }
@@ -179,6 +187,7 @@ textarea { width: 100%; min-height: 130px; padding: 15px; color: var(--ink); bac
 .bar-group.single-bar .bar { width: 32px; }
 .bar { min-height: 2px; border-radius: 7px 7px 2px 2px; position: relative; }
 .bar-yes { background: var(--green); }
+.bar-missing { background: #dbe5ef; }
 .bar-no { background: var(--red); }
 .bar-value { position: absolute; left: 50%; top: -19px; transform: translateX(-50%); color: var(--ink); font-size: .67rem; font-weight: 900; }
 .bar-label { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center; color: var(--muted); font-size: .69rem; font-weight: 800; }
@@ -210,6 +219,9 @@ textarea { width: 100%; min-height: 130px; padding: 15px; color: var(--ink); bac
   .report-entry-actions { width: 100%; }
   .metrics-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .charts-grid { grid-template-columns: 1fr; }
+  .report-content .charts-grid { grid-template-columns: 1fr; }
+  .weight-metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .weight-metrics .metric-weight { grid-column: 1 / -1; }
   .unit-list { grid-template-columns: 1fr; }
 }
 
@@ -241,6 +253,8 @@ textarea { width: 100%; min-height: 130px; padding: 15px; color: var(--ink); bac
   .general-report-header { box-shadow: none; padding: 0 0 12px; }
   .general-report-header img { width: 100%; max-width: 620px; }
   .general-metrics { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .weight-metrics { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .weight-metrics .metric-weight { grid-column: auto; }
   .metrics-grid { gap: 6px; }
   .metric-card { padding: 9px; }
   .metric-value { font-size: 1.25rem; }

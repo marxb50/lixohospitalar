@@ -514,7 +514,7 @@ function attendedUnits(groups) {
   return units.size;
 }
 
-function collectionDonut(chartId, legendId, slices, total) {
+function collectionDonut(chartId, legendId, slices, total, unitLabel = 'coletas S') {
   const colors = ['#071c4d', '#0aa7c8', '#ffdc00', '#158354', '#5272aa', '#64bfce'];
   let start = 0;
   const segments = slices.map((slice, index) => {
@@ -525,23 +525,102 @@ function collectionDonut(chartId, legendId, slices, total) {
   });
   const background = total ? `conic-gradient(${segments.join(', ')})` : '#dbe5ef';
   document.getElementById(chartId).innerHTML = `
-    <div class="donut" style="background:${background}" role="img" aria-label="${total} coletas confirmadas">
-      <div class="donut-center"><strong>${total}</strong><span>coletas S</span></div>
+    <div class="donut" style="background:${background}" role="img" aria-label="${formatNumber(total)} ${escapeHtml(unitLabel)}">
+      <div class="donut-center"><strong>${formatNumber(total)}</strong><span>${escapeHtml(unitLabel)}</span></div>
     </div>`;
   document.getElementById(legendId).innerHTML = slices.map((slice, index) => `
-    <span><i class="legend-dot" style="background:${colors[index % colors.length]}"></i>${escapeHtml(slice.label)}: ${slice.count}</span>
+    <span><i class="legend-dot" style="background:${colors[index % colors.length]}"></i>${escapeHtml(slice.label)}: ${formatNumber(slice.count)}</span>
   `).join('');
 }
 
-function collectionBars(chartId, items) {
-  const maxValue = Math.max(1, ...items.map(item => item.count));
+function collectionBars(chartId, items, unitLabel = 'coletas confirmadas') {
+  const maxValue = Math.max(1, ...items.map(item => Number(item.count) || 0));
   document.getElementById(chartId).innerHTML = items.map(item => {
     const height = item.count ? Math.max(5, Math.round(item.count / maxValue * 180)) : 2;
-    return `<div class="bar-group single-bar" aria-label="${escapeHtml(item.label)}: ${item.count} coletas confirmadas">
-      <div class="bar bar-yes" style="height:${height}px"><span class="bar-value">${item.count}</span></div>
+    const value = item.count == null ? '—' : formatNumber(item.count);
+    return `<div class="bar-group single-bar" aria-label="${escapeHtml(item.label)}: ${value} ${escapeHtml(unitLabel)}">
+      <div class="bar ${item.count == null ? 'bar-missing' : 'bar-yes'}" style="height:${height}px"><span class="bar-value">${value}</span></div>
       <span class="bar-label">${escapeHtml(item.label)}</span>
     </div>`;
   }).join('');
+}
+
+function parseWeightNumber(token) {
+  let number = String(token).replace(/[.,]+$/, '');
+  if (/^\d{1,3}(?:\.\d{3})+(?:,\d+)?$/.test(number)) number = number.replaceAll('.', '').replace(',', '.');
+  else if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(number)) number = number.replaceAll(',', '');
+  else number = number.replace(',', '.');
+  const value = Number(number);
+  return Number.isFinite(value) && value > 0 && value <= 50000 ? value : null;
+}
+
+function parseWeightKg(note) {
+  const text = String(note || '').trim();
+  if (!text) return { kg: null, reading: 'Sem observação', review: false };
+  const matches = [...text.matchAll(/(?:^|[^\da-z])([bB]?)(\d[\d.,]*)\s*(kg|gk|kh|ykg|yk|km|toneladas?|t)\b/gi)]
+    .map(match => ({ prefix: match[1], number: parseWeightNumber(match[2]), unit: match[3].toLowerCase() }))
+    .filter(match => match.number !== null);
+  if (matches.length > 1) return { kg: null, reading: 'Mais de um peso na observação: conferir', review: true };
+  if (!matches.length) return { kg: null, reading: /pes[oe]/i.test(text) ? 'Peso sem unidade ou número claro: conferir' : 'Sem peso informado', review: /pes[oe]/i.test(text) };
+  const match = matches[0];
+  if (match.unit === 'km' && !/pes[oe]|l[ií]quido|liguido/i.test(text)) {
+    return { kg: null, reading: 'Unidade km sem indicação de peso: conferir', review: true };
+  }
+  const tonnes = match.unit === 't' || match.unit.startsWith('tonelada');
+  const kg = tonnes ? match.number * 1000 : match.number;
+  const review = Boolean(match.prefix) || (!tonnes && match.unit !== 'kg');
+  const reading = review
+    ? `Conferir grafia “${match.prefix}${match.unit}”; ${formatNumber(kg)} kg interpretados`
+    : tonnes ? 'Toneladas convertidas para kg' : 'Peso identificado';
+  return { kg, reading, review };
+}
+
+function weightEntries(datas, observations) {
+  return datas.map(date => ({ date, ...parseWeightKg(observations && observations[date]) }));
+}
+
+function summarizeWeight(entries) {
+  const measured = entries.filter(entry => entry.kg !== null);
+  return {
+    totalKg: measured.reduce((sum, entry) => sum + entry.kg, 0),
+    daysWithWeight: measured.length,
+    maxKg: measured.length ? Math.max(...measured.map(entry => entry.kg)) : null,
+    reviewCount: entries.filter(entry => entry.review).length,
+    totalDates: entries.length
+  };
+}
+
+function weightLabel(kg) {
+  return kg == null ? '—' : `${formatNumber(kg)} kg`;
+}
+
+function renderWeightMetrics(targetId, reviewId, summary) {
+  const average = summary.daysWithWeight ? summary.totalKg / summary.daysWithWeight : null;
+  const metrics = [
+    ['Peso líquido informado', summary.daysWithWeight ? weightLabel(summary.totalKg) : '—', 'metric-weight'],
+    ['Dias com peso', `${summary.daysWithWeight} de ${summary.totalDates}`, 'metric-rate'],
+    ['Média por dia com peso', weightLabel(average), 'metric-neutral'],
+    ['Maior peso diário', weightLabel(summary.maxKg), 'metric-neutral']
+  ];
+  document.getElementById(targetId).innerHTML = metrics.map(([label, value, className]) => `
+    <article class="metric-card ${className}"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value">${escapeHtml(value)}</strong></article>
+  `).join('');
+  document.getElementById(reviewId).textContent = summary.reviewCount
+    ? `${summary.reviewCount} anotação(ões) com grafia ou valor a conferir. Veja a coluna “Leitura” na tabela por data; os pesos interpretados estão incluídos no total.`
+    : 'O total usa apenas datas com peso identificável nas observações.';
+}
+
+function renderWeightComparison(targetId, current, previous, previousName) {
+  const target = document.getElementById(targetId);
+  if (!current.daysWithWeight || !previous || !previous.daysWithWeight) {
+    target.textContent = `Sem pesos suficientes para comparar com ${previousName}.`;
+    return;
+  }
+  const delta = current.totalKg - previous.totalKg;
+  target.innerHTML = `
+    <span class="comparison-number">${delta > 0 ? '+' : ''}${formatNumber(delta)} kg</span>
+    <span>${previousName}: ${weightLabel(previous.totalKg)} em ${previous.daysWithWeight} dia(s) com peso. Atual: ${current.daysWithWeight} dia(s) com peso.</span>
+  `;
 }
 
 function previousMonth(monthName, year) {
@@ -591,9 +670,21 @@ function renderGeneralReport(groups, previousGroups, monthName, year, previous) 
   const unitsCount = attendedUnits(groups);
   const daysWithCollection = groups.reduce((sum, group) => sum + group.summary.daysWithCollection, 0);
   const averagePerDay = datesCount ? total.collected / datesCount : 0;
+  const groupWeights = groups.map(group => {
+    const entries = weightEntries(group.data.datas, group.data.observacoes);
+    return { day: group.day, entries, summary: summarizeWeight(entries) };
+  });
+  const weights = groupWeights.flatMap(group => group.entries);
+  const weightByDate = new Map(weights.map(entry => [entry.date, entry]));
+  const monthlyWeight = summarizeWeight(weights);
+  const previousWeight = previousGroups
+    ? summarizeWeight(previousGroups.flatMap(group => weightEntries(group.data.datas, group.data.observacoes)))
+    : null;
   document.getElementById('generalTitle').textContent = `Relatório geral • ${monthName}`;
   document.getElementById('generalSubtitle').textContent = `Ano ${year} • todos os dias de coleta`;
   document.getElementById('generalPrintTitle').textContent = `Relatório geral — ${monthName} de ${year}`;
+  renderWeightMetrics('generalWeightMetrics', 'generalWeightReviewNote', monthlyWeight);
+  renderWeightComparison('generalComparison', monthlyWeight, previousWeight, `${previous.monthName} de ${previous.year}`);
 
   const metrics = [
     ['Coletas confirmadas (S)', total.collected, 'metric-good'],
@@ -608,35 +699,32 @@ function renderGeneralReport(groups, previousGroups, monthName, year, previous) 
     <article class="metric-card ${className}"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value">${escapeHtml(String(value))}</strong></article>
   `).join('');
 
-  const comparison = document.getElementById('generalComparison');
+  const comparison = document.getElementById('generalActivityComparison');
   if (!previousTotal || !previousTotal.answered) {
-    comparison.textContent = `Sem registros no período anterior (${previous.monthName} de ${previous.year}).`;
+    comparison.textContent = `Coletas: sem registros no período anterior (${previous.monthName} de ${previous.year}).`;
   } else {
     const previousDays = previousGroups.reduce((sum, group) => sum + group.data.datas.length, 0);
     const previousAverage = previousDays ? previousTotal.collected / previousDays : 0;
     const delta = total.collected - previousTotal.collected;
     const averageDelta = averagePerDay - previousAverage;
     const sign = delta > 0 ? '+' : '';
-    comparison.innerHTML = `
-      <span class="comparison-number">${sign}${delta} coletas</span>
-      <span>${previous.monthName} de ${previous.year}: ${previousTotal.collected} coletas, ${attendedUnits(previousGroups)} unidades atendidas e média de ${formatNumber(previousAverage)} por dia de roteiro</span>
-      <span class="comparison-detail">Variação da média diária: ${averageDelta > 0 ? '+' : ''}${formatNumber(averageDelta)} coleta(s)</span>
-    `;
+    comparison.textContent = `Coletas em relação a ${previous.monthName} de ${previous.year}: ${sign}${delta} no total; mês anterior ${previousTotal.collected} coletas e ${attendedUnits(previousGroups)} unidades atendidas. Variação da média por dia de roteiro: ${averageDelta > 0 ? '+' : ''}${formatNumber(averageDelta)}.`;
   }
 
-  collectionDonut('generalDonut', 'generalDonutLegend', groups.map(group => ({ label: group.day, count: group.summary.collected })), total.collected);
+  collectionDonut('generalDonut', 'generalDonutLegend', groupWeights.map(group => ({ label: group.day, count: group.summary.totalKg })), monthlyWeight.totalKg, 'kg no mês');
   const daily = groups.flatMap(group => group.summary.daily.map(item => ({ day: group.day, ...item })));
   daily.sort((a, b) => Number(a.date.slice(0, 2)) - Number(b.date.slice(0, 2)));
-  collectionBars('generalWeekdayChart', daily.map(item => ({ label: item.date, count: item.collected })));
+  collectionBars('generalWeekdayChart', daily.map(item => ({ label: item.date, count: weightByDate.get(item.date).kg })), 'kg');
 
   const cells = (summary, units) => `<td>${summary.collected}</td><td>${units}</td><td>${summary.missed}</td><td>${summary.blank}</td>`;
-  document.getElementById('generalWeekdayRows').innerHTML = groups.map(group => `
-    <tr><th scope="row">${group.day}</th><td>${group.data.datas.length}</td>${cells(group.summary, group.summary.unitsAttended)}</tr>
-  `).join('') + `<tr class="total-row"><th scope="row">Total</th><td>${datesCount}</td>${cells(total, unitsCount)}</tr>`;
+  document.getElementById('generalWeekdayRows').innerHTML = groups.map((group, index) => `
+    <tr><th scope="row">${group.day}</th><td>${group.data.datas.length}</td><td>${groupWeights[index].summary.daysWithWeight ? weightLabel(groupWeights[index].summary.totalKg) : '—'}</td><td>${groupWeights[index].summary.daysWithWeight}</td>${cells(group.summary, group.summary.unitsAttended)}</tr>
+  `).join('') + `<tr class="total-row"><th scope="row">Total</th><td>${datesCount}</td><td>${monthlyWeight.daysWithWeight ? weightLabel(monthlyWeight.totalKg) : '—'}</td><td>${monthlyWeight.daysWithWeight}</td>${cells(total, unitsCount)}</tr>`;
 
-  document.getElementById('generalDailyRows').innerHTML = daily.map(item => `
-    <tr><th scope="row">${item.day} ${escapeHtml(item.date)}</th><td>${item.collected}</td><td>${item.missed}</td><td>${item.blank}</td></tr>
-  `).join('');
+  document.getElementById('generalDailyRows').innerHTML = daily.map(item => {
+    const entry = weightByDate.get(item.date);
+    return `<tr><th scope="row">${item.day} ${escapeHtml(item.date)}</th><td>${weightLabel(entry.kg)}</td><td>${escapeHtml(entry.reading)}</td><td>${item.collected}</td><td>${item.missed}</td><td>${item.blank}</td></tr>`;
+  }).join('');
 
   const units = new Map();
   groups.forEach(group => {
@@ -669,14 +757,21 @@ function renderGeneralReport(groups, previousGroups, monthName, year, previous) 
 
 function renderReport() {
   const summary = calculateSummary(state.datas, state.statuses);
+  const weights = weightEntries(state.datas, state.observacoes);
+  const weightSummary = summarizeWeight(weights);
   document.getElementById('reportTitle').textContent = `${state.selectedDay} • ${state.selectedMonth}`;
   document.getElementById('reportSubtitle').textContent = `Ano ${state.selectedYear}`;
+  renderWeightMetrics('weightMetrics', 'weightReviewNote', weightSummary);
   renderMetrics(summary);
   renderDonut(summary);
-  renderDailyBars(summary);
+  renderDailyBars(weights);
+  document.getElementById('weightDateRows').innerHTML = weights.map(entry => `
+    <tr><th scope="row">${escapeHtml(entry.date)}</th><td>${weightLabel(entry.kg)}</td><td>${escapeHtml(entry.reading)}</td></tr>
+  `).join('');
   renderReportTable();
   renderReportObservations();
   document.getElementById('comparisonResult').textContent = 'Calculando...';
+  document.getElementById('activityComparison').textContent = 'Calculando comparação das coletas...';
 }
 
 function renderMetrics(summary) {
@@ -701,8 +796,8 @@ function renderDonut(summary) {
   collectionDonut('donutChart', 'donutLegend', summary.daily.map(item => ({ label: item.date, count: item.collected })), summary.collected);
 }
 
-function renderDailyBars(summary) {
-  collectionBars('dailyChart', summary.daily.map(item => ({ label: item.date, count: item.collected })));
+function renderDailyBars(weights) {
+  collectionBars('dailyChart', weights.map(item => ({ label: item.date, count: item.kg })), 'kg');
 }
 
 function renderReportTable() {
@@ -728,33 +823,33 @@ function renderReportObservations() {
 }
 
 async function loadComparison() {
+  const previous = previousMonth(state.selectedMonth, state.selectedYear);
   try {
-    const result = await bridge.call('getResumoComparativo', [state.selectedMonth, state.selectedDay, state.selectedYear]);
-    if (!result || result.error) throw new Error(result && result.error ? result.error : 'Comparativo indisponível.');
-    renderComparison(result);
+    const data = await bridge.call('getDadosSalvos', [previous.monthName, state.selectedDay, previous.year]);
+    if (!data || data.error) throw new Error(data && data.error ? data.error : 'Comparativo indisponível.');
+    renderWeightComparison(
+      'comparisonResult',
+      summarizeWeight(weightEntries(state.datas, state.observacoes)),
+      summarizeWeight(weightEntries(data.datas, data.observacoes)),
+      `${previous.monthName} de ${previous.year}`
+    );
+    renderComparison(calculateSummary(state.datas, state.statuses), calculateSummary(data.datas, data.statuses), previous);
   } catch (error) {
-    document.getElementById('comparisonResult').textContent = 'Comparativo indisponível no momento.';
+    document.getElementById('comparisonResult').textContent = 'Comparação de peso indisponível no momento.';
+    document.getElementById('activityComparison').textContent = 'Comparação de coletas indisponível no momento.';
   }
 }
 
-function renderComparison(result) {
-  const current = Number(result.atual && result.atual.coletado || 0);
-  const previous = Number(result.anterior && result.anterior.coletado || 0);
-  const previousAnswered = Number(result.anterior && result.anterior.respondidos || 0);
-  if (!previousAnswered) {
-    document.getElementById('comparisonResult').textContent = 'Sem registros no mês anterior para comparar.';
+function renderComparison(currentSummary, previousSummary, previousPeriod) {
+  if (!previousSummary.answered) {
+    document.getElementById('activityComparison').textContent = 'Sem registros de coletas no mês anterior para comparar.';
     return;
   }
-  const currentDays = Array.isArray(result.atual && result.atual.daily) ? result.atual.daily.length : state.datas.length;
-  const previousDays = Array.isArray(result.anterior && result.anterior.daily) ? result.anterior.daily.length : 0;
-  const currentAverage = currentDays ? current / currentDays : 0;
-  const previousAverage = previousDays ? previous / previousDays : 0;
-  const delta = current - previous;
+  const currentAverage = currentSummary.averagePerDay;
+  const previousAverage = previousSummary.averagePerDay;
+  const delta = currentSummary.collected - previousSummary.collected;
   const sign = delta > 0 ? '+' : '';
-  document.getElementById('comparisonResult').innerHTML = `
-    <span class="comparison-number">${sign}${delta} coletas</span>
-    <span>Mês anterior: ${previous} coletas • média por dia: ${formatNumber(previousAverage)} → ${formatNumber(currentAverage)}</span>
-  `;
+  document.getElementById('activityComparison').textContent = `Coletas em relação a ${previousPeriod.monthName} de ${previousPeriod.year}: ${sign}${delta}; mês anterior ${previousSummary.collected}. Média por dia de roteiro: ${formatNumber(previousAverage)} → ${formatNumber(currentAverage)}.`;
 }
 
 async function generateFile(type) {
