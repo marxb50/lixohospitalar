@@ -1,6 +1,6 @@
 'use strict';
 
-const SCRIPT_BRIDGE_URL = '__SCRIPT_BRIDGE_URL__';
+const SCRIPT_BRIDGE_URL = 'https://script.google.com/macros/s/AKfycbxEW2S4suAd_LTKgpkjlCYVDRHzDHTV3TDJhGZ0ND3g6ddmtZBNHqnssibTWogBCIwv/exec';
 const GITHUB_ORIGIN = 'https://marxb50.github.io';
 
 const UNIDADES = {
