@@ -199,6 +199,7 @@ function bindHomeEvents() {
   });
 
   document.getElementById('btnViewReport').addEventListener('click', () => runHomeAction('report'));
+  document.getElementById('btnGeneralReport').addEventListener('click', openGeneralReport);
   document.getElementById('btnPdfHome').addEventListener('click', () => runHomeAction('pdf'));
   document.getElementById('btnDocHome').addEventListener('click', () => runHomeAction('doc'));
 }
@@ -218,6 +219,8 @@ function bindReportEvents() {
   document.getElementById('btnCloseReport').addEventListener('click', closeReport);
   document.getElementById('btnPdfReport').addEventListener('click', () => generateFile('pdf'));
   document.getElementById('btnDocReport').addEventListener('click', () => generateFile('doc'));
+  document.getElementById('btnCloseGeneral').addEventListener('click', () => setOverlay('generalOverlay', false));
+  document.getElementById('btnPrintGeneral').addEventListener('click', () => window.print());
 }
 
 function setYear(year) {
@@ -486,6 +489,159 @@ function calculateSummary(datas, statuses) {
   const total = answered + blank;
   const rate = answered ? Math.round((collected / answered) * 1000) / 10 : 0;
   return { collected, missed, blank, answered, total, rate, daily };
+}
+
+function emptySummary() {
+  return { collected: 0, missed: 0, blank: 0, answered: 0, total: 0, rate: 0 };
+}
+
+function mergeSummary(target, summary) {
+  target.collected += summary.collected;
+  target.missed += summary.missed;
+  target.blank += summary.blank;
+  target.answered += summary.answered;
+  target.total += summary.total;
+  target.rate = target.answered ? Math.round(target.collected / target.answered * 1000) / 10 : 0;
+  return target;
+}
+
+function previousMonth(monthName, year) {
+  const index = MONTHS.indexOf(monthName);
+  return index === 0
+    ? { monthName: MONTHS[11], year: Number(year) - 1 }
+    : { monthName: MONTHS[index - 1], year: Number(year) };
+}
+
+async function fetchMonthlyGroups(monthName, year) {
+  const days = ['Segunda', 'Quarta', 'Sexta'];
+  const results = await Promise.all(days.map(day => bridge.call('getDadosSalvos', [monthName, day, year])));
+  return results.map((data, index) => {
+    if (!data || data.error) throw new Error(data && data.error ? data.error : 'Erro ao carregar o relatório geral.');
+    return { day: days[index], data, summary: calculateSummary(data.datas || [], data.statuses || {}) };
+  });
+}
+
+async function openGeneralReport() {
+  const monthName = state.selectedMonth;
+  const year = state.selectedYear;
+  try {
+    setLoading(true, 'Reunindo as coletas do mês...');
+    const groups = await fetchMonthlyGroups(monthName, year);
+    const previous = previousMonth(monthName, year);
+    let previousGroups = null;
+    try {
+      previousGroups = await fetchMonthlyGroups(previous.monthName, previous.year);
+    } catch (error) {
+      // O relatório do mês atual continua disponível se o comparativo falhar.
+    }
+    renderGeneralReport(groups, previousGroups, monthName, year, previous);
+    setOverlay('generalOverlay', true);
+  } catch (error) {
+    showToast(error.message || 'Não foi possível gerar o relatório geral.');
+  } finally {
+    setLoading(false);
+  }
+}
+
+function reportRate(summary) {
+  return summary.answered ? `${formatNumber(summary.rate)}%` : '—';
+}
+
+function renderGeneralReport(groups, previousGroups, monthName, year, previous) {
+  const total = groups.reduce((sum, group) => mergeSummary(sum, group.summary), emptySummary());
+  const previousTotal = previousGroups
+    ? previousGroups.reduce((sum, group) => mergeSummary(sum, group.summary), emptySummary())
+    : null;
+  document.getElementById('generalTitle').textContent = `Relatório geral • ${monthName}`;
+  document.getElementById('generalSubtitle').textContent = `Ano ${year} • todos os dias de coleta`;
+  document.getElementById('generalPrintTitle').textContent = `Relatório geral — ${monthName} de ${year}`;
+
+  const metrics = [
+    ['Coletados', total.collected, 'metric-good'],
+    ['Não coletados', total.missed, 'metric-bad'],
+    ['Sem resposta', total.blank, 'metric-neutral'],
+    ['Taxa de coleta', reportRate(total), 'metric-rate'],
+    ['Coletas previstas', total.total, 'metric-neutral'],
+    ['Registros respondidos', total.answered, 'metric-good'],
+    ['Datas de coleta', groups.reduce((sum, group) => sum + group.data.datas.length, 0), 'metric-rate']
+  ];
+  document.getElementById('generalMetrics').innerHTML = metrics.map(([label, value, className]) => `
+    <article class="metric-card ${className}"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value">${escapeHtml(String(value))}</strong></article>
+  `).join('');
+
+  const comparison = document.getElementById('generalComparison');
+  if (!previousTotal || !previousTotal.answered || !total.answered) {
+    comparison.textContent = `Sem dados suficientes para comparar com ${previous.monthName} de ${previous.year}.`;
+  } else {
+    const delta = Math.round((total.rate - previousTotal.rate) * 10) / 10;
+    const sign = delta > 0 ? '+' : '';
+    comparison.innerHTML = `
+      <span class="comparison-number">${sign}${formatNumber(delta)} p.p.</span>
+      <span>${previous.monthName} de ${previous.year}: ${formatNumber(previousTotal.rate)}% • ${previousTotal.collected} coletados • ${previousTotal.missed} não coletados</span>
+    `;
+  }
+
+  const denominator = total.total || 1;
+  const collectedEnd = total.collected / denominator * 100;
+  const missedEnd = collectedEnd + total.missed / denominator * 100;
+  document.getElementById('generalDonut').innerHTML = `
+    <div class="donut" style="background:conic-gradient(var(--green) 0 ${collectedEnd}%, var(--red) ${collectedEnd}% ${missedEnd}%, #dbe5ef ${missedEnd}% 100%)" role="img" aria-label="${total.collected} coletados, ${total.missed} não coletados e ${total.blank} sem resposta">
+      <div class="donut-center"><strong>${reportRate(total)}</strong><span>taxa de coleta</span></div>
+    </div>`;
+  document.getElementById('generalDonutLegend').innerHTML = `
+    <span><i class="legend-dot legend-yes"></i>Coletado: ${total.collected}</span>
+    <span><i class="legend-dot legend-no"></i>Não coletado: ${total.missed}</span>
+    <span><i class="legend-dot" style="background:#dbe5ef"></i>Sem resposta: ${total.blank}</span>`;
+
+  const maxValue = Math.max(1, ...groups.flatMap(group => [group.summary.collected, group.summary.missed]));
+  document.getElementById('generalWeekdayChart').innerHTML = groups.map(group => {
+    const yesHeight = Math.max(2, Math.round(group.summary.collected / maxValue * 180));
+    const noHeight = Math.max(2, Math.round(group.summary.missed / maxValue * 180));
+    return `<div class="bar-group" aria-label="${group.day}: ${group.summary.collected} coletados e ${group.summary.missed} não coletados">
+      <div class="bar bar-yes" style="height:${yesHeight}px"><span class="bar-value">${group.summary.collected}</span></div>
+      <div class="bar bar-no" style="height:${noHeight}px"><span class="bar-value">${group.summary.missed}</span></div>
+      <span class="bar-label">${group.day}</span>
+    </div>`;
+  }).join('');
+
+  const cells = summary => `<td>${summary.total}</td><td>${summary.collected}</td><td>${summary.missed}</td><td>${summary.blank}</td><td>${reportRate(summary)}</td>`;
+  document.getElementById('generalWeekdayRows').innerHTML = groups.map(group => `
+    <tr><th scope="row">${group.day}</th><td>${group.data.datas.length}</td>${cells(group.summary)}</tr>
+  `).join('') + `<tr class="total-row"><th scope="row">Total</th><td>${groups.reduce((sum, group) => sum + group.data.datas.length, 0)}</td>${cells(total)}</tr>`;
+
+  const daily = groups.flatMap(group => group.summary.daily.map(item => ({ day: group.day, ...item })));
+  daily.sort((a, b) => Number(a.date.slice(0, 2)) - Number(b.date.slice(0, 2)));
+  document.getElementById('generalDailyRows').innerHTML = daily.map(item => {
+    const summary = mergeSummary(emptySummary(), { collected: item.collected, missed: item.missed, blank: item.blank, answered: item.collected + item.missed, total: item.collected + item.missed + item.blank });
+    return `<tr><th scope="row">${item.day} ${escapeHtml(item.date)}</th>${cells(summary)}</tr>`;
+  }).join('');
+
+  const units = new Map();
+  groups.forEach(group => {
+    (group.data.unidades || UNIDADES[group.day]).forEach(unit => {
+      if (!units.has(unit)) units.set(unit, emptySummary());
+      const unitSummary = units.get(unit);
+      (group.data.statuses[unit] || Array(group.data.datas.length).fill('')).forEach(value => {
+        if (value === 'S') unitSummary.collected += 1;
+        else if (value === 'N') unitSummary.missed += 1;
+        else unitSummary.blank += 1;
+      });
+      unitSummary.answered = unitSummary.collected + unitSummary.missed;
+      unitSummary.total = unitSummary.answered + unitSummary.blank;
+      unitSummary.rate = unitSummary.answered ? Math.round(unitSummary.collected / unitSummary.answered * 1000) / 10 : 0;
+    });
+  });
+  document.getElementById('generalUnitRows').innerHTML = [...units.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
+    .map(([unit, summary]) => `<tr><th scope="row">${escapeHtml(unit)}</th>${cells(summary)}</tr>`).join('');
+
+  const observations = groups.flatMap(group => group.data.datas
+    .filter(date => String(group.data.observacoes[date] || '').trim())
+    .map(date => ({ day: group.day, date, text: group.data.observacoes[date] })));
+  observations.sort((a, b) => Number(a.date.slice(0, 2)) - Number(b.date.slice(0, 2)));
+  document.getElementById('generalObservations').innerHTML = observations.length
+    ? observations.map(item => `<div class="observation-item"><strong>${item.day} ${escapeHtml(item.date)}</strong><span>${escapeHtml(item.text)}</span></div>`).join('')
+    : '<div class="empty-state">Nenhuma observação registrada neste mês.</div>';
 }
 
 function renderReport() {
