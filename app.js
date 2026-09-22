@@ -487,12 +487,14 @@ function calculateSummary(datas, statuses) {
   const blank = daily.reduce((sum, item) => sum + item.blank, 0);
   const answered = collected + missed;
   const total = answered + blank;
-  const rate = answered ? Math.round((collected / answered) * 1000) / 10 : 0;
-  return { collected, missed, blank, answered, total, rate, daily };
+  const unitsAttended = units.filter(unit => (statuses[unit] || []).some(value => value === 'S')).length;
+  const daysWithCollection = daily.filter(item => item.collected > 0).length;
+  const averagePerDay = datas.length ? Math.round(collected / datas.length * 10) / 10 : 0;
+  return { collected, missed, blank, answered, total, unitsAttended, daysWithCollection, averagePerDay, daily };
 }
 
 function emptySummary() {
-  return { collected: 0, missed: 0, blank: 0, answered: 0, total: 0, rate: 0 };
+  return { collected: 0, missed: 0, blank: 0, answered: 0, total: 0 };
 }
 
 function mergeSummary(target, summary) {
@@ -501,8 +503,45 @@ function mergeSummary(target, summary) {
   target.blank += summary.blank;
   target.answered += summary.answered;
   target.total += summary.total;
-  target.rate = target.answered ? Math.round(target.collected / target.answered * 1000) / 10 : 0;
   return target;
+}
+
+function attendedUnits(groups) {
+  const units = new Set();
+  groups.forEach(group => Object.entries(group.data.statuses || {}).forEach(([unit, values]) => {
+    if (values.some(value => value === 'S')) units.add(unit);
+  }));
+  return units.size;
+}
+
+function collectionDonut(chartId, legendId, slices, total) {
+  const colors = ['#071c4d', '#0aa7c8', '#ffdc00', '#158354', '#5272aa', '#64bfce'];
+  let start = 0;
+  const segments = slices.map((slice, index) => {
+    const end = start + (total ? slice.count / total * 100 : 0);
+    const segment = `${colors[index % colors.length]} ${start}% ${end}%`;
+    start = end;
+    return segment;
+  });
+  const background = total ? `conic-gradient(${segments.join(', ')})` : '#dbe5ef';
+  document.getElementById(chartId).innerHTML = `
+    <div class="donut" style="background:${background}" role="img" aria-label="${total} coletas confirmadas">
+      <div class="donut-center"><strong>${total}</strong><span>coletas S</span></div>
+    </div>`;
+  document.getElementById(legendId).innerHTML = slices.map((slice, index) => `
+    <span><i class="legend-dot" style="background:${colors[index % colors.length]}"></i>${escapeHtml(slice.label)}: ${slice.count}</span>
+  `).join('');
+}
+
+function collectionBars(chartId, items) {
+  const maxValue = Math.max(1, ...items.map(item => item.count));
+  document.getElementById(chartId).innerHTML = items.map(item => {
+    const height = item.count ? Math.max(5, Math.round(item.count / maxValue * 180)) : 2;
+    return `<div class="bar-group single-bar" aria-label="${escapeHtml(item.label)}: ${item.count} coletas confirmadas">
+      <div class="bar bar-yes" style="height:${height}px"><span class="bar-value">${item.count}</span></div>
+      <span class="bar-label">${escapeHtml(item.label)}</span>
+    </div>`;
+  }).join('');
 }
 
 function previousMonth(monthName, year) {
@@ -543,97 +582,81 @@ async function openGeneralReport() {
   }
 }
 
-function reportRate(summary) {
-  return summary.answered ? `${formatNumber(summary.rate)}%` : '—';
-}
-
 function renderGeneralReport(groups, previousGroups, monthName, year, previous) {
   const total = groups.reduce((sum, group) => mergeSummary(sum, group.summary), emptySummary());
   const previousTotal = previousGroups
     ? previousGroups.reduce((sum, group) => mergeSummary(sum, group.summary), emptySummary())
     : null;
+  const datesCount = groups.reduce((sum, group) => sum + group.data.datas.length, 0);
+  const unitsCount = attendedUnits(groups);
+  const daysWithCollection = groups.reduce((sum, group) => sum + group.summary.daysWithCollection, 0);
+  const averagePerDay = datesCount ? total.collected / datesCount : 0;
   document.getElementById('generalTitle').textContent = `Relatório geral • ${monthName}`;
   document.getElementById('generalSubtitle').textContent = `Ano ${year} • todos os dias de coleta`;
   document.getElementById('generalPrintTitle').textContent = `Relatório geral — ${monthName} de ${year}`;
 
   const metrics = [
-    ['Coletados', total.collected, 'metric-good'],
-    ['Não coletados', total.missed, 'metric-bad'],
-    ['Sem resposta', total.blank, 'metric-neutral'],
-    ['Taxa de coleta', reportRate(total), 'metric-rate'],
-    ['Coletas previstas', total.total, 'metric-neutral'],
-    ['Registros respondidos', total.answered, 'metric-good'],
-    ['Datas de coleta', groups.reduce((sum, group) => sum + group.data.datas.length, 0), 'metric-rate']
+    ['Coletas confirmadas (S)', total.collected, 'metric-good'],
+    ['Unidades atendidas', unitsCount, 'metric-rate'],
+    ['Dias com coleta', daysWithCollection, 'metric-good'],
+    ['Média por dia de roteiro', formatNumber(averagePerDay), 'metric-rate'],
+    ['N: sem coleta no dia', total.missed, 'metric-neutral'],
+    ['Em branco', total.blank, 'metric-neutral'],
+    ['Dias de roteiro', datesCount, 'metric-neutral']
   ];
   document.getElementById('generalMetrics').innerHTML = metrics.map(([label, value, className]) => `
     <article class="metric-card ${className}"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value">${escapeHtml(String(value))}</strong></article>
   `).join('');
 
   const comparison = document.getElementById('generalComparison');
-  if (!previousTotal || !previousTotal.answered || !total.answered) {
-    comparison.textContent = `Sem dados suficientes para comparar com ${previous.monthName} de ${previous.year}.`;
+  if (!previousTotal || !previousTotal.answered) {
+    comparison.textContent = `Sem registros no período anterior (${previous.monthName} de ${previous.year}).`;
   } else {
-    const delta = Math.round((total.rate - previousTotal.rate) * 10) / 10;
+    const previousDays = previousGroups.reduce((sum, group) => sum + group.data.datas.length, 0);
+    const previousAverage = previousDays ? previousTotal.collected / previousDays : 0;
+    const delta = total.collected - previousTotal.collected;
+    const averageDelta = averagePerDay - previousAverage;
     const sign = delta > 0 ? '+' : '';
     comparison.innerHTML = `
-      <span class="comparison-number">${sign}${formatNumber(delta)} p.p.</span>
-      <span>${previous.monthName} de ${previous.year}: ${formatNumber(previousTotal.rate)}% • ${previousTotal.collected} coletados • ${previousTotal.missed} não coletados</span>
+      <span class="comparison-number">${sign}${delta} coletas</span>
+      <span>${previous.monthName} de ${previous.year}: ${previousTotal.collected} coletas, ${attendedUnits(previousGroups)} unidades atendidas e média de ${formatNumber(previousAverage)} por dia de roteiro</span>
+      <span class="comparison-detail">Variação da média diária: ${averageDelta > 0 ? '+' : ''}${formatNumber(averageDelta)} coleta(s)</span>
     `;
   }
 
-  const denominator = total.total || 1;
-  const collectedEnd = total.collected / denominator * 100;
-  const missedEnd = collectedEnd + total.missed / denominator * 100;
-  document.getElementById('generalDonut').innerHTML = `
-    <div class="donut" style="background:conic-gradient(var(--green) 0 ${collectedEnd}%, var(--red) ${collectedEnd}% ${missedEnd}%, #dbe5ef ${missedEnd}% 100%)" role="img" aria-label="${total.collected} coletados, ${total.missed} não coletados e ${total.blank} sem resposta">
-      <div class="donut-center"><strong>${reportRate(total)}</strong><span>taxa de coleta</span></div>
-    </div>`;
-  document.getElementById('generalDonutLegend').innerHTML = `
-    <span><i class="legend-dot legend-yes"></i>Coletado: ${total.collected}</span>
-    <span><i class="legend-dot legend-no"></i>Não coletado: ${total.missed}</span>
-    <span><i class="legend-dot" style="background:#dbe5ef"></i>Sem resposta: ${total.blank}</span>`;
-
-  const maxValue = Math.max(1, ...groups.flatMap(group => [group.summary.collected, group.summary.missed]));
-  document.getElementById('generalWeekdayChart').innerHTML = groups.map(group => {
-    const yesHeight = Math.max(2, Math.round(group.summary.collected / maxValue * 180));
-    const noHeight = Math.max(2, Math.round(group.summary.missed / maxValue * 180));
-    return `<div class="bar-group" aria-label="${group.day}: ${group.summary.collected} coletados e ${group.summary.missed} não coletados">
-      <div class="bar bar-yes" style="height:${yesHeight}px"><span class="bar-value">${group.summary.collected}</span></div>
-      <div class="bar bar-no" style="height:${noHeight}px"><span class="bar-value">${group.summary.missed}</span></div>
-      <span class="bar-label">${group.day}</span>
-    </div>`;
-  }).join('');
-
-  const cells = summary => `<td>${summary.total}</td><td>${summary.collected}</td><td>${summary.missed}</td><td>${summary.blank}</td><td>${reportRate(summary)}</td>`;
-  document.getElementById('generalWeekdayRows').innerHTML = groups.map(group => `
-    <tr><th scope="row">${group.day}</th><td>${group.data.datas.length}</td>${cells(group.summary)}</tr>
-  `).join('') + `<tr class="total-row"><th scope="row">Total</th><td>${groups.reduce((sum, group) => sum + group.data.datas.length, 0)}</td>${cells(total)}</tr>`;
-
+  collectionDonut('generalDonut', 'generalDonutLegend', groups.map(group => ({ label: group.day, count: group.summary.collected })), total.collected);
   const daily = groups.flatMap(group => group.summary.daily.map(item => ({ day: group.day, ...item })));
   daily.sort((a, b) => Number(a.date.slice(0, 2)) - Number(b.date.slice(0, 2)));
-  document.getElementById('generalDailyRows').innerHTML = daily.map(item => {
-    const summary = mergeSummary(emptySummary(), { collected: item.collected, missed: item.missed, blank: item.blank, answered: item.collected + item.missed, total: item.collected + item.missed + item.blank });
-    return `<tr><th scope="row">${item.day} ${escapeHtml(item.date)}</th>${cells(summary)}</tr>`;
-  }).join('');
+  collectionBars('generalWeekdayChart', daily.map(item => ({ label: item.date, count: item.collected })));
+
+  const cells = (summary, units) => `<td>${summary.collected}</td><td>${units}</td><td>${summary.missed}</td><td>${summary.blank}</td>`;
+  document.getElementById('generalWeekdayRows').innerHTML = groups.map(group => `
+    <tr><th scope="row">${group.day}</th><td>${group.data.datas.length}</td>${cells(group.summary, group.summary.unitsAttended)}</tr>
+  `).join('') + `<tr class="total-row"><th scope="row">Total</th><td>${datesCount}</td>${cells(total, unitsCount)}</tr>`;
+
+  document.getElementById('generalDailyRows').innerHTML = daily.map(item => `
+    <tr><th scope="row">${item.day} ${escapeHtml(item.date)}</th><td>${item.collected}</td><td>${item.missed}</td><td>${item.blank}</td></tr>
+  `).join('');
 
   const units = new Map();
   groups.forEach(group => {
     (group.data.unidades || UNIDADES[group.day]).forEach(unit => {
       if (!units.has(unit)) units.set(unit, emptySummary());
       const unitSummary = units.get(unit);
-      (group.data.statuses[unit] || Array(group.data.datas.length).fill('')).forEach(value => {
-        if (value === 'S') unitSummary.collected += 1;
+      if (!unitSummary.dates) unitSummary.dates = [];
+      (group.data.statuses[unit] || Array(group.data.datas.length).fill('')).forEach((value, index) => {
+        if (value === 'S') {
+          unitSummary.collected += 1;
+          unitSummary.dates.push(group.data.datas[index]);
+        }
         else if (value === 'N') unitSummary.missed += 1;
         else unitSummary.blank += 1;
       });
-      unitSummary.answered = unitSummary.collected + unitSummary.missed;
-      unitSummary.total = unitSummary.answered + unitSummary.blank;
-      unitSummary.rate = unitSummary.answered ? Math.round(unitSummary.collected / unitSummary.answered * 1000) / 10 : 0;
     });
   });
   document.getElementById('generalUnitRows').innerHTML = [...units.entries()]
     .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
-    .map(([unit, summary]) => `<tr><th scope="row">${escapeHtml(unit)}</th>${cells(summary)}</tr>`).join('');
+    .map(([unit, summary]) => `<tr><th scope="row">${escapeHtml(unit)}</th><td>${summary.collected}</td><td>${summary.dates.length ? escapeHtml(summary.dates.join(', ')) : '—'}</td><td>${summary.missed}</td><td>${summary.blank}</td></tr>`).join('');
 
   const observations = groups.flatMap(group => group.data.datas
     .filter(date => String(group.data.observacoes[date] || '').trim())
@@ -658,10 +681,12 @@ function renderReport() {
 
 function renderMetrics(summary) {
   const metrics = [
-    { label: 'Coletado', value: summary.collected, className: 'metric-good' },
-    { label: 'Não coletado', value: summary.missed, className: 'metric-bad' },
-    { label: 'Sem resposta', value: summary.blank, className: 'metric-neutral' },
-    { label: 'Taxa de coleta', value: `${formatNumber(summary.rate)}%`, className: 'metric-rate' }
+    { label: 'Coletas confirmadas (S)', value: summary.collected, className: 'metric-good' },
+    { label: 'Unidades atendidas', value: summary.unitsAttended, className: 'metric-rate' },
+    { label: 'Dias com coleta', value: summary.daysWithCollection, className: 'metric-good' },
+    { label: 'Média por dia de roteiro', value: formatNumber(summary.averagePerDay), className: 'metric-rate' },
+    { label: 'N: sem coleta no dia', value: summary.missed, className: 'metric-neutral' },
+    { label: 'Em branco', value: summary.blank, className: 'metric-neutral' }
   ];
 
   document.getElementById('metricsGrid').innerHTML = metrics.map(metric => `
@@ -673,37 +698,11 @@ function renderMetrics(summary) {
 }
 
 function renderDonut(summary) {
-  const denominator = summary.total || 1;
-  const collectedEnd = (summary.collected / denominator) * 100;
-  const missedEnd = collectedEnd + (summary.missed / denominator) * 100;
-  const background = `conic-gradient(var(--green) 0 ${collectedEnd}%, var(--red) ${collectedEnd}% ${missedEnd}%, #dbe5ef ${missedEnd}% 100%)`;
-
-  document.getElementById('donutChart').innerHTML = `
-    <div class="donut" style="background:${background}" role="img" aria-label="${summary.collected} coletados, ${summary.missed} não coletados e ${summary.blank} sem resposta">
-      <div class="donut-center"><strong>${formatNumber(summary.rate)}%</strong><span>taxa de coleta</span></div>
-    </div>
-  `;
-  document.getElementById('donutLegend').innerHTML = `
-    <span><i class="legend-dot legend-yes"></i>Coletado: ${summary.collected}</span>
-    <span><i class="legend-dot legend-no"></i>Não coletado: ${summary.missed}</span>
-    <span><i class="legend-dot" style="background:#dbe5ef"></i>Sem resposta: ${summary.blank}</span>
-  `;
+  collectionDonut('donutChart', 'donutLegend', summary.daily.map(item => ({ label: item.date, count: item.collected })), summary.collected);
 }
 
 function renderDailyBars(summary) {
-  const chart = document.getElementById('dailyChart');
-  const maxValue = Math.max(1, ...summary.daily.flatMap(item => [item.collected, item.missed]));
-  chart.innerHTML = summary.daily.map(item => {
-    const collectedHeight = Math.max(2, Math.round((item.collected / maxValue) * 180));
-    const missedHeight = Math.max(2, Math.round((item.missed / maxValue) * 180));
-    return `
-      <div class="bar-group" aria-label="${escapeHtml(item.date)}: ${item.collected} coletados e ${item.missed} não coletados">
-        <div class="bar bar-yes" style="height:${collectedHeight}px"><span class="bar-value">${item.collected}</span></div>
-        <div class="bar bar-no" style="height:${missedHeight}px"><span class="bar-value">${item.missed}</span></div>
-        <span class="bar-label">${escapeHtml(item.date)}</span>
-      </div>
-    `;
-  }).join('');
+  collectionBars('dailyChart', summary.daily.map(item => ({ label: item.date, count: item.collected })));
 }
 
 function renderReportTable() {
@@ -739,14 +738,22 @@ async function loadComparison() {
 }
 
 function renderComparison(result) {
-  const current = Number(result.atual && result.atual.taxa || 0);
-  const previous = Number(result.anterior && result.anterior.taxa || 0);
-  const delta = Math.round((current - previous) * 10) / 10;
+  const current = Number(result.atual && result.atual.coletado || 0);
+  const previous = Number(result.anterior && result.anterior.coletado || 0);
+  const previousAnswered = Number(result.anterior && result.anterior.respondidos || 0);
+  if (!previousAnswered) {
+    document.getElementById('comparisonResult').textContent = 'Sem registros no mês anterior para comparar.';
+    return;
+  }
+  const currentDays = Array.isArray(result.atual && result.atual.daily) ? result.atual.daily.length : state.datas.length;
+  const previousDays = Array.isArray(result.anterior && result.anterior.daily) ? result.anterior.daily.length : 0;
+  const currentAverage = currentDays ? current / currentDays : 0;
+  const previousAverage = previousDays ? previous / previousDays : 0;
+  const delta = current - previous;
   const sign = delta > 0 ? '+' : '';
-  const direction = delta > 0 ? 'melhora' : delta < 0 ? 'queda' : 'estável';
   document.getElementById('comparisonResult').innerHTML = `
-    <span class="comparison-number">${sign}${formatNumber(delta)} p.p.</span>
-    <span>${direction} • mês anterior: ${formatNumber(previous)}%</span>
+    <span class="comparison-number">${sign}${delta} coletas</span>
+    <span>Mês anterior: ${previous} coletas • média por dia: ${formatNumber(previousAverage)} → ${formatNumber(currentAverage)}</span>
   `;
 }
 
@@ -777,13 +784,13 @@ async function generateFile(type) {
 
 function statusLabel(value) {
   if (value === 'S') return 'coletado';
-  if (value === 'N') return 'não coletado';
+  if (value === 'N') return 'sem coleta nesta data';
   return 'sem resposta';
 }
 
 function statusShortLabel(value) {
   if (value === 'S') return 'Coletado';
-  if (value === 'N') return 'Não coletado';
+  if (value === 'N') return 'Sem coleta';
   return '—';
 }
 
@@ -816,11 +823,16 @@ function demoCall(method, args) {
   if (method === 'getDadosSalvos') return Promise.resolve(buildDemoData(args[0], args[1], args[2]));
   if (method === 'getResumoComparativo') {
     const current = buildDemoData(args[0], args[1], args[2]);
-    const currentSummary = calculateSummary(current.datas, current.statuses);
+    const previous = previousMonth(args[0], args[2]);
+    const previousData = buildDemoData(previous.monthName, args[1], previous.year);
+    const toBackendSummary = data => {
+      const summary = calculateSummary(data.datas, data.statuses);
+      return { coletado: summary.collected, respondidos: summary.answered, daily: summary.daily };
+    };
     return Promise.resolve({
       success: true,
-      atual: { taxa: currentSummary.rate },
-      anterior: { taxa: Math.max(0, currentSummary.rate - 6.4) }
+      atual: toBackendSummary(current),
+      anterior: toBackendSummary(previousData)
     });
   }
   if (method === 'salvarTudo') return Promise.resolve({ success: true, savedAt: 'agora' });
