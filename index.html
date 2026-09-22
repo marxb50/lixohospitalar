@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#071c4d">
+  <meta name="description" content="SELIM — controle da coleta de resíduos de serviços de saúde de Parnamirim.">
+  <title>SELIM | Coleta Hospitalar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#mainContent">Ir para o conteúdo</a>
+
+  <header class="brand-header">
+    <div class="brand-wrap">
+      <img class="brand-logo" src="assets/logo-parnamirim.png" alt="Prefeitura de Parnamirim — Secretaria Municipal de Limpeza Urbana">
+      <div class="brand-context">
+        <span class="brand-eyebrow">SELIM</span>
+        <strong>Coleta de resíduos hospitalares</strong>
+      </div>
+    </div>
+  </header>
+
+  <main class="app" id="mainContent">
+    <section class="welcome-card" aria-labelledby="pageTitle">
+      <div>
+        <span class="pill">Gestão de coleta</span>
+        <h1 id="pageTitle">Escolha o período da coleta</h1>
+        <p>Selecione o ano, o mês e o dia da semana. A forma de registrar continua a mesma.</p>
+      </div>
+      <div class="welcome-mark" aria-hidden="true">✓</div>
+    </section>
+
+    <section class="card selector-card" aria-labelledby="selectionTitle">
+      <h2 class="sr-only" id="selectionTitle">Seleção do período</h2>
+
+      <fieldset class="selector-group">
+        <legend>Ano</legend>
+        <div class="year-selector" id="yearSelector"></div>
+      </fieldset>
+
+      <fieldset class="selector-group">
+        <legend>Mês</legend>
+        <div class="months-grid" id="monthsGrid"></div>
+      </fieldset>
+
+      <fieldset class="selector-group selector-group-last">
+        <legend>Dia da coleta</legend>
+        <p class="field-help">Ao tocar no dia, a ficha de coleta será aberta.</p>
+        <div class="days-grid">
+          <button class="day-btn" type="button" data-day="Segunda">
+            <span>Segunda-feira</span><span class="button-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="day-btn" type="button" data-day="Quarta">
+            <span>Quarta-feira</span><span class="button-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="day-btn" type="button" data-day="Sexta">
+            <span>Sexta-feira</span><span class="button-arrow" aria-hidden="true">›</span>
+          </button>
+        </div>
+      </fieldset>
+
+      <div class="loading-box" id="loadingBox" role="status" aria-live="polite">
+        <div class="loader" aria-hidden="true"></div>
+        <div id="loadingText">Carregando dados...</div>
+      </div>
+    </section>
+
+    <section class="card report-entry" aria-labelledby="reportEntryTitle">
+      <div>
+        <span class="section-kicker">Resumo e relatórios</span>
+        <h2 id="reportEntryTitle">Veja os dados do período</h2>
+        <p>O relatório mantém a tabela e as observações e acrescenta gráficos e comparações.</p>
+      </div>
+      <div class="report-entry-actions">
+        <button class="action-btn action-primary" id="btnViewReport" type="button">Ver relatório</button>
+        <button class="action-btn action-secondary" id="btnPdfHome" type="button">Gerar PDF</button>
+        <button class="action-btn action-secondary" id="btnDocHome" type="button">Gerar DOC</button>
+      </div>
+    </section>
+
+    <p class="system-note" id="systemNote" aria-live="polite"></p>
+  </main>
+
+  <section class="full-overlay" id="editorOverlay" aria-hidden="true" aria-labelledby="editorTitle">
+    <header class="overlay-header">
+      <div class="overlay-header-inner">
+        <div class="overlay-title-wrap">
+          <span class="section-kicker">Ficha de coleta</span>
+          <h2 class="overlay-title" id="editorTitle">Coleta</h2>
+          <p class="overlay-subtitle" id="editorSubtitle">Ano</p>
+        </div>
+        <button class="icon-btn" id="btnCloseEditor" type="button" aria-label="Fechar ficha">×</button>
+      </div>
+      <div class="save-state" id="autosaveStatus" role="status" aria-live="polite">Dados carregados</div>
+    </header>
+
+    <div class="overlay-content editor-content">
+      <nav class="dates-strip" id="datesStrip" aria-label="Datas da coleta"></nav>
+
+      <section class="block" aria-labelledby="statusTitle">
+        <div class="block-heading">
+          <div>
+            <span class="section-kicker">Unidades</span>
+            <h3 id="statusTitle">Status da coleta</h3>
+          </div>
+          <div class="status-legend" aria-label="Legenda">
+            <span><i class="legend-dot legend-yes"></i>S = coletado</span>
+            <span><i class="legend-dot legend-no"></i>N = não coletado</span>
+          </div>
+        </div>
+        <div class="unit-list" id="unitList"></div>
+        <p class="status-help">Toque no botão da unidade para alternar: vazio → S → N.</p>
+      </section>
+
+      <section class="block" aria-labelledby="observationTitle">
+        <div class="obs-title-row">
+          <div>
+            <span class="section-kicker">Anotações</span>
+            <h3 id="observationTitle">Observação do dia</h3>
+          </div>
+          <div class="obs-date-tag" id="obsDateTag">Dia</div>
+        </div>
+        <label class="sr-only" for="obsTextarea">Observação da data selecionada</label>
+        <textarea id="obsTextarea" placeholder="Digite aqui as observações do dia selecionado..."></textarea>
+      </section>
+    </div>
+
+    <footer class="overlay-footer">
+      <button class="save-btn" id="btnSalvarEditor" type="button">Salvar agora</button>
+    </footer>
+  </section>
+
+  <section class="full-overlay report-overlay" id="reportOverlay" aria-hidden="true" aria-labelledby="reportTitle">
+    <header class="overlay-header">
+      <div class="overlay-header-inner">
+        <div class="overlay-title-wrap">
+          <span class="section-kicker">Relatório visual</span>
+          <h2 class="overlay-title" id="reportTitle">Resumo da coleta</h2>
+          <p class="overlay-subtitle" id="reportSubtitle">Período</p>
+        </div>
+        <button class="icon-btn" id="btnCloseReport" type="button" aria-label="Fechar relatório">×</button>
+      </div>
+    </header>
+
+    <div class="overlay-content report-content">
+      <section class="metrics-grid" id="metricsGrid" aria-label="Indicadores principais"></section>
+
+      <section class="comparison-card" aria-labelledby="comparisonTitle">
+        <div>
+          <span class="section-kicker">Comparativo</span>
+          <h3 id="comparisonTitle">Em relação ao mês anterior</h3>
+        </div>
+        <div class="comparison-result" id="comparisonResult">Calculando...</div>
+      </section>
+
+      <div class="charts-grid">
+        <section class="block chart-card" aria-labelledby="overallChartTitle">
+          <span class="section-kicker">Gráfico 1</span>
+          <h3 id="overallChartTitle">Resultado geral</h3>
+          <div class="donut-wrap" id="donutChart"></div>
+          <div class="chart-legend" id="donutLegend"></div>
+        </section>
+
+        <section class="block chart-card" aria-labelledby="dailyChartTitle">
+          <span class="section-kicker">Gráfico 2</span>
+          <h3 id="dailyChartTitle">Coletas por data</h3>
+          <div class="bar-chart" id="dailyChart" role="img" aria-label="Comparação entre coletado e não coletado em cada data"></div>
+        </section>
+      </div>
+
+      <section class="block" aria-labelledby="reportTableTitle">
+        <div class="block-heading">
+          <div>
+            <span class="section-kicker">Dados completos</span>
+            <h3 id="reportTableTitle">Tabela da coleta</h3>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="report-table">
+            <thead id="reportTableHead"></thead>
+            <tbody id="reportTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="block" aria-labelledby="reportObservationsTitle">
+        <span class="section-kicker">Anotações</span>
+        <h3 id="reportObservationsTitle">Observações registradas</h3>
+        <div class="observations-list" id="reportObservations"></div>
+      </section>
+
+      <section class="block export-block" aria-labelledby="exportTitle">
+        <div>
+          <span class="section-kicker">Baixar</span>
+          <h3 id="exportTitle">Gerar arquivo do relatório</h3>
+        </div>
+        <div class="export-actions">
+          <button class="action-btn action-primary" id="btnPdfReport" type="button">Gerar PDF</button>
+          <button class="action-btn action-secondary" id="btnDocReport" type="button">Gerar DOC</button>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <iframe class="bridge-frame" id="bridgeFrame" title="Conexão segura com o banco de dados"></iframe>
+
+  <script src="app.js"></script>
+</body>
+</html>
