@@ -188,7 +188,11 @@ function parseObsRow(row) {
 
   if (row[0] instanceof Date || /^\d{2}\/\d{2}$/.test(String(row[0] || '').trim())) {
     const date = formatDateToDDMM(row[0]);
-    const year = extractYearFromAny(row[0]);
+    // A cópia contém observações antigas sem ano: out-dez/2025 e jan-fev/2026.
+    // Os registros novos usam ID com ano, portanto esta regra vale só para o legado.
+    const month = Number(date.slice(3, 5));
+    const legacyYear = month >= 10 ? '2025' : month <= 2 ? '2026' : '';
+    const year = extractYearFromAny(row[0]) || legacyYear;
     if (date && year) return { ano: year, data: date, obs: String(row[1] || '') };
   }
 
@@ -370,6 +374,57 @@ function calcularResumo(dates, statuses) {
   return { coletado, naoColetado, semResposta, respondidos, taxa, daily };
 }
 
+function interpretarNumeroPeso(token) {
+  let number = String(token).replace(/[.,]+$/, '');
+  if (/^\d{1,3}(?:\.\d{3})+(?:,\d+)?$/.test(number)) number = number.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(number)) number = number.replace(/,/g, '');
+  else number = number.replace(',', '.');
+  const value = Number(number);
+  return isFinite(value) && value > 0 && value <= 50000 ? value : null;
+}
+
+function interpretarPesoKg(note) {
+  const text = String(note || '').trim();
+  if (!text) return { kg: null, leitura: 'Sem observação', conferir: false };
+  const pattern = /(?:^|[^\da-z])([bB]?)(\d[\d.,]*)\s*(kg|gk|kh|ykg|yk|km|toneladas?|t)\b/gi;
+  const matches = [];
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    const number = interpretarNumeroPeso(match[2]);
+    if (number !== null) matches.push({ prefix: match[1], number, unit: match[3].toLowerCase() });
+  }
+  if (matches.length > 1) return { kg: null, leitura: 'Mais de um peso: conferir', conferir: true };
+  if (!matches.length) {
+    const hasWeightWord = /pes[oe]/i.test(text);
+    return { kg: null, leitura: hasWeightWord ? 'Peso sem unidade ou número claro: conferir' : 'Sem peso informado', conferir: hasWeightWord };
+  }
+  const found = matches[0];
+  if (found.unit === 'km' && !/pes[oe]|l[ií]quido|liguido/i.test(text)) {
+    return { kg: null, leitura: 'Unidade km sem indicação de peso: conferir', conferir: true };
+  }
+  const tonnes = found.unit === 't' || found.unit.indexOf('tonelada') === 0;
+  const kg = tonnes ? found.number * 1000 : found.number;
+  const conferir = Boolean(found.prefix) || (!tonnes && found.unit !== 'kg');
+  const leitura = conferir ? `Conferir grafia ${found.prefix}${found.unit}; ${kg} kg interpretados` : tonnes ? 'Toneladas convertidas para kg' : 'Peso identificado';
+  return { kg, leitura, conferir };
+}
+
+function resumirPeso(dates, observations) {
+  const entries = dates.map(date => ({ data: date, peso: interpretarPesoKg(observations[date]) }));
+  const measured = entries.filter(item => item.peso.kg !== null);
+  return {
+    entries,
+    totalKg: measured.reduce((sum, item) => sum + item.peso.kg, 0),
+    diasComPeso: measured.length,
+    maxKg: measured.length ? Math.max.apply(null, measured.map(item => item.peso.kg)) : null,
+    conferir: entries.filter(item => item.peso.conferir).length
+  };
+}
+
+function formatarKg(value) {
+  return value === null ? '—' : `${Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg`;
+}
+
 function periodoAnterior(monthName, yearInput) {
   let monthIndex = MESES[monthName] - 1;
   let year = parseInt(yearInput, 10) || 2026;
@@ -407,39 +462,42 @@ function getReportFolder(monthName, year) {
   return monthFolders.hasNext() ? monthFolders.next() : root.createFolder(monthName);
 }
 
-function appendReportCharts(body, summary) {
-  if (!summary.coletado) {
-    body.appendParagraph('Nenhuma coleta confirmada neste período para representar nos gráficos.');
-    return;
+function appendReportCharts(body, summary, weightSummary) {
+  if (weightSummary.diasComPeso) {
+    let weightData = Charts.newDataTable()
+      .addColumn(Charts.ColumnType.STRING, 'Data')
+      .addColumn(Charts.ColumnType.NUMBER, 'Peso líquido (kg)');
+    weightSummary.entries.filter(item => item.peso.kg !== null).forEach(item => {
+      weightData = weightData.addRow([item.data, item.peso.kg]);
+    });
+    const weightChart = Charts.newColumnChart()
+      .setDataTable(weightData.build())
+      .setTitle('Peso líquido nos dias com registro (kg)')
+      .setDimensions(650, 330)
+      .setColors(['#0aa7c8'])
+      .setOption('legend.position', 'none')
+      .build();
+    body.appendImage(weightChart.getBlob()).setWidth(480);
+  } else {
+    body.appendParagraph('Nenhum peso identificado nas observações deste período.');
   }
-  let pieData = Charts.newDataTable()
-    .addColumn(Charts.ColumnType.STRING, 'Data')
-    .addColumn(Charts.ColumnType.NUMBER, 'Coletas');
-  summary.daily.forEach(item => { pieData = pieData.addRow([item.data, item.coletado]); });
 
-  const pieChart = Charts.newPieChart()
-    .setDataTable(pieData.build())
-    .setTitle('Distribuição das coletas confirmadas por data')
-    .setDimensions(650, 330)
-    .setColors(['#071c4d', '#0aa7c8', '#ffdc00', '#158354', '#5272aa'])
-    .setOption('pieHole', 0.45)
-    .setOption('legend.position', 'bottom')
-    .build();
-  body.appendImage(pieChart.getBlob()).setWidth(480);
-
-  if (!summary.daily.length) return;
-  let barDataBuilder = Charts.newDataTable()
-    .addColumn(Charts.ColumnType.STRING, 'Data')
-    .addColumn(Charts.ColumnType.NUMBER, 'Coletas confirmadas');
-  summary.daily.forEach(item => { barDataBuilder = barDataBuilder.addRow([item.data, item.coletado]); });
-  const barChart = Charts.newColumnChart()
-    .setDataTable(barDataBuilder.build())
-    .setTitle('Coletas confirmadas por data')
-    .setDimensions(650, 330)
-    .setColors(['#158354'])
-    .setOption('legend.position', 'bottom')
-    .build();
-  body.appendImage(barChart.getBlob()).setWidth(480);
+  if (summary.coletado) {
+    let collectionData = Charts.newDataTable()
+      .addColumn(Charts.ColumnType.STRING, 'Data')
+      .addColumn(Charts.ColumnType.NUMBER, 'Coletas confirmadas');
+    summary.daily.forEach(item => { collectionData = collectionData.addRow([item.data, item.coletado]); });
+    const collectionChart = Charts.newColumnChart()
+      .setDataTable(collectionData.build())
+      .setTitle('Coletas confirmadas por data')
+      .setDimensions(650, 330)
+      .setColors(['#158354'])
+      .setOption('legend.position', 'none')
+      .build();
+    body.appendImage(collectionChart.getBlob()).setWidth(480);
+  } else {
+    body.appendParagraph('Nenhuma coleta confirmada neste período para representar no segundo gráfico.');
+  }
 }
 
 function buildReportDocument(payload, baseName) {
@@ -448,7 +506,11 @@ function buildReportDocument(payload, baseName) {
   const observations = payload.observacoes || {};
   const units = Object.keys(statuses);
   const summary = calcularResumo(dates, statuses);
-  const comparison = getResumoComparativo(payload.monthName, payload.dayName, payload.year);
+  const weightSummary = resumirPeso(dates, observations);
+  const previousPeriod = periodoAnterior(payload.monthName, payload.year);
+  const previousData = getDadosSalvos(previousPeriod.monthName, payload.dayName, previousPeriod.year);
+  const previousSummary = previousData.success ? calcularResumo(previousData.datas, previousData.statuses) : null;
+  const previousWeight = previousData.success ? resumirPeso(previousData.datas, previousData.observacoes) : null;
   const document = DocumentApp.create(baseName);
   const body = document.getBody();
 
@@ -461,8 +523,41 @@ function buildReportDocument(payload, baseName) {
   const reportTitle = body.appendParagraph(`Relatório de Coleta Hospitalar — ${payload.dayName}, ${payload.monthName} de ${payload.year}`);
   reportTitle.setHeading(DocumentApp.ParagraphHeading.HEADING1);
   reportTitle.editAsText().setForegroundColor('#071c4d');
-  const explanation = body.appendParagraph('S confirma uma coleta. N significa que não houve coleta naquela data; algumas unidades não têm dia fixo. N não indica falha de atendimento.');
+  const explanation = body.appendParagraph('O peso líquido é anotado por data nas observações e representa o caminhão inteiro. Ele não é dividido entre unidades. S confirma uma coleta; N significa apenas que não houve coleta naquela data.');
   explanation.editAsText().setForegroundColor('#071c4d');
+
+  const weightTitle = body.appendParagraph('PESO LÍQUIDO INFORMADO');
+  weightTitle.setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  weightTitle.editAsText().setForegroundColor('#071c4d');
+  const averageWeight = weightSummary.diasComPeso ? weightSummary.totalKg / weightSummary.diasComPeso : null;
+  const weightMetrics = body.appendTable([
+    ['TOTAL', 'DIAS COM PESO', 'MÉDIA POR DIA COM PESO', 'MAIOR PESO DIÁRIO'],
+    [weightSummary.diasComPeso ? formatarKg(weightSummary.totalKg) : '—', `${weightSummary.diasComPeso} de ${dates.length}`, formatarKg(averageWeight), formatarKg(weightSummary.maxKg)]
+  ]);
+  for (let column = 0; column < 4; column += 1) {
+    weightMetrics.getCell(0, column).setBackgroundColor('#071c4d').editAsText().setForegroundColor('#ffffff').setBold(true);
+    weightMetrics.getCell(1, column).setBackgroundColor('#fff8c0').editAsText().setForegroundColor('#071c4d').setBold(true);
+  }
+  if (weightSummary.conferir) {
+    body.appendParagraph(`${weightSummary.conferir} anotação(ões) com grafia ou valor a conferir. Valores interpretados como kg estão incluídos no total; veja a tabela por data.`);
+  }
+  if (weightSummary.diasComPeso && previousWeight && previousWeight.diasComPeso) {
+    const deltaKg = weightSummary.totalKg - previousWeight.totalKg;
+    const sign = deltaKg > 0 ? '+' : '';
+    body.appendParagraph(`Peso em relação a ${previousPeriod.monthName} de ${previousPeriod.year}: ${sign}${formatarKg(deltaKg)}. Mês anterior: ${formatarKg(previousWeight.totalKg)} em ${previousWeight.diasComPeso} dia(s) com peso; atual: ${weightSummary.diasComPeso} dia(s).`)
+      .editAsText().setForegroundColor('#071c4d').setBold(true);
+  } else {
+    body.appendParagraph('Sem pesos suficientes no mês atual ou anterior para comparação.');
+  }
+
+  const chartsTitle = body.appendParagraph('Gráficos');
+  chartsTitle.setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  chartsTitle.editAsText().setForegroundColor('#071c4d');
+  appendReportCharts(body, summary, weightSummary);
+
+  const collectionTitle = body.appendParagraph('ATIVIDADE DE COLETA');
+  collectionTitle.setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  collectionTitle.editAsText().setForegroundColor('#071c4d');
 
   const unitsAttended = units.filter(unit => (statuses[unit] || []).some(value => value === 'S')).length;
   const daysWithCollection = summary.daily.filter(item => item.coletado > 0).length;
@@ -478,9 +573,9 @@ function buildReportDocument(payload, baseName) {
   }
   body.appendParagraph(`Dias com coleta: ${daysWithCollection} de ${dates.length} datas do roteiro. Média de ${averagePerDay} coleta(s) por dia de roteiro.`);
 
-  if (comparison && comparison.success && Number(comparison.anterior.respondidos || 0) > 0) {
-    const previousCount = Number(comparison.anterior.coletado || 0);
-    const previousDays = comparison.anterior.daily.length;
+  if (previousSummary && previousSummary.respondidos > 0) {
+    const previousCount = previousSummary.coletado;
+    const previousDays = previousSummary.daily.length;
     const previousAverage = previousDays ? Math.round(previousCount / previousDays * 10) / 10 : 0;
     const delta = summary.coletado - previousCount;
     const sign = delta > 0 ? '+' : '';
@@ -490,10 +585,19 @@ function buildReportDocument(payload, baseName) {
     body.appendParagraph('Sem registros no mês anterior para comparação.');
   }
 
-  const chartsTitle = body.appendParagraph('Gráficos');
-  chartsTitle.setHeading(DocumentApp.ParagraphHeading.HEADING2);
-  chartsTitle.editAsText().setForegroundColor('#071c4d');
-  appendReportCharts(body, summary);
+  const weightDataTitle = body.appendParagraph('Peso por data');
+  weightDataTitle.setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  weightDataTitle.editAsText().setForegroundColor('#071c4d');
+  const weightTable = body.appendTable([['DATA', 'PESO LÍQUIDO', 'LEITURA']]);
+  weightSummary.entries.forEach(item => {
+    const row = weightTable.appendTableRow();
+    row.appendTableCell(item.data);
+    row.appendTableCell(formatarKg(item.peso.kg));
+    row.appendTableCell(item.peso.leitura);
+  });
+  for (let column = 0; column < 3; column += 1) {
+    weightTable.getCell(0, column).setBackgroundColor('#071c4d').editAsText().setForegroundColor('#ffffff').setBold(true);
+  }
 
   const dataTitle = body.appendParagraph('Dados completos');
   dataTitle.setHeading(DocumentApp.ParagraphHeading.HEADING2);
