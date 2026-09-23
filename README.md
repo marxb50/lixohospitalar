@@ -12,6 +12,11 @@ Interface web do controle de coleta hospitalar da Secretaria Municipal de Limpez
 
 O backend aceita chamadas somente do domínio `https://marxb50.github.io` e grava na cópia da planilha do `marxb50`. O Apps Script e a planilha originais do `brasilbrazil` não são modificados.
 
+Os relatórios visual, geral, PDF e DOC são protegidos por senha. Na primeira configuração,
+o proprietário deve criar nas propriedades privadas do Apps Script a propriedade
+`REPORT_PASSWORD_INITIAL`; no primeiro acesso correto ela é convertida automaticamente
+em hash com salt e a senha em texto é apagada. A senha nunca fica no GitHub.
+
 ## Significado dos registros
 
 `S` confirma uma coleta naquela unidade e data. `N` significa apenas que não houve coleta naquela data; unidades como cemitérios podem ser atendidas em outra segunda, quarta ou sexta. Por isso, os relatórios não calculam taxa de sucesso usando `S / (S + N)`. Eles mostram coletas confirmadas, unidades atendidas, dias com coleta, a média por dia de roteiro e as marcações `N` separadamente.

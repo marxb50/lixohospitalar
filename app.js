@@ -42,7 +42,8 @@ const state = {
   autoSaveTimer: null,
   autoSaveInFlight: false,
   pendingSaveAfterFlight: false,
-  demoMode: new URLSearchParams(window.location.search).get('demo') === '1'
+  demoMode: new URLSearchParams(window.location.search).get('demo') === '1',
+  reportPassword: ''
 };
 
 const bridge = {
@@ -458,9 +459,25 @@ async function saveManually() {
 }
 
 async function openReport() {
+  if (!await ensureReportPassword()) return;
   renderReport();
   setOverlay('reportOverlay', true);
   await loadComparison();
+}
+
+async function ensureReportPassword() {
+  if (state.demoMode || state.reportPassword) return true;
+  const password = window.prompt('Digite a senha para abrir o relatório:');
+  if (!password) return false;
+  try {
+    const result = await bridge.call('verificarSenhaRelatorio', [{ senha: password }]);
+    if (!result || result.error) throw new Error(result && result.error ? result.error : 'Senha não autorizada.');
+    state.reportPassword = password;
+    return true;
+  } catch (error) {
+    showToast(error.message || 'Senha incorreta.');
+    return false;
+  }
 }
 
 function closeReport() {
@@ -643,6 +660,7 @@ async function openGeneralReport() {
   const monthName = state.selectedMonth;
   const year = state.selectedYear;
   try {
+    if (!await ensureReportPassword()) return;
     setLoading(true, 'Reunindo as coletas do mês...');
     const groups = await fetchMonthlyGroups(monthName, year);
     const previous = previousMonth(monthName, year);
@@ -857,6 +875,7 @@ async function generateFile(type) {
     showToast('A geração de arquivos fica disponível depois da publicação.');
     return;
   }
+  if (!await ensureReportPassword()) return;
   const method = type === 'pdf' ? 'gerarRelatorioPDF' : 'gerarRelatorioDoc';
   const buttons = type === 'pdf'
     ? document.querySelectorAll('#btnPdfHome, #btnPdfReport')
@@ -865,7 +884,7 @@ async function generateFile(type) {
 
   try {
     showToast(type === 'pdf' ? 'Gerando PDF...' : 'Gerando DOC...');
-    const result = await bridge.call(method, [getPayload()]);
+    const result = await bridge.call(method, [{ ...getPayload(), senha: state.reportPassword }]);
     if (!result || result.error) throw new Error(result && result.error ? result.error : 'Erro ao gerar arquivo.');
     const url = type === 'pdf' ? result.pdfUrl : result.docUrl;
     showToast(type === 'pdf' ? 'PDF gerado com sucesso.' : 'DOC gerado com sucesso.');

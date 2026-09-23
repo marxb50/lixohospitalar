@@ -22,7 +22,8 @@
     const ALLOWED_PARENT = 'https://marxb50.github.io';
     const ALLOWED_METHODS = new Set([
       'getDadosSalvos', 'salvarTudo', 'getResumoComparativo',
-      'gerarRelatorioPDF', 'gerarRelatorioDoc', 'salvarEGerarRelatorios'
+      'gerarRelatorioPDF', 'gerarRelatorioDoc', 'salvarEGerarRelatorios',
+      'verificarSenhaRelatorio'
     ]);
 
     function postToApp(message) {
@@ -42,6 +43,7 @@
       if (method === 'gerarRelatorioPDF') runner.gerarRelatorioPDF.apply(runner, args);
       if (method === 'gerarRelatorioDoc') runner.gerarRelatorioDoc.apply(runner, args);
       if (method === 'salvarEGerarRelatorios') runner.salvarEGerarRelatorios.apply(runner, args);
+      if (method === 'verificarSenhaRelatorio') runner.verificarSenhaRelatorio.apply(runner, args);
     }
 
     window.addEventListener('message', event => {

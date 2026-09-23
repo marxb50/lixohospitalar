@@ -32,8 +32,12 @@ const MESES = {
 const NOMES_MESES = Object.keys(MESES);
 
 function doGet(e) {
+  const session = e && e.parameter ? String(e.parameter.bridgeSession || '') : '';
+  if (session && (session.length < 8 || session.length > 100 || /[^A-Za-z0-9_-]/.test(session))) {
+    throw new Error('Sessão de conexão inválida.');
+  }
   const template = HtmlService.createTemplateFromFile('index');
-  template.bridgeSession = e && e.parameter ? String(e.parameter.bridgeSession || '') : '';
+  template.bridgeSession = session;
   return template.evaluate()
     .setTitle('SELIM - Conexão de dados')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
@@ -437,8 +441,9 @@ function periodoAnterior(monthName, yearInput) {
   return { monthName: NOMES_MESES[monthIndex], year };
 }
 
-function getResumoComparativo(monthName, dayName, yearInput) {
+function getResumoComparativo(monthName, dayName, yearInput, senha) {
   try {
+    assertReportPassword_(senha);
     const currentData = getDadosSalvos(monthName, dayName, yearInput);
     if (currentData.error) return currentData;
     const previousPeriod = periodoAnterior(monthName, yearInput);
@@ -652,6 +657,7 @@ function buildReportDocument(payload, baseName) {
 
 function gerarRelatorioPDF(payload) {
   try {
+    assertReportPassword_(payload && payload.senha);
     const year = parseInt(payload.year, 10) || 2026;
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
     const baseName = `Relatorio_Hospitalar_${payload.dayName}_${MESES[payload.monthName]}_${year}_${timestamp}`;
@@ -669,6 +675,7 @@ function gerarRelatorioPDF(payload) {
 
 function gerarRelatorioDoc(payload) {
   try {
+    assertReportPassword_(payload && payload.senha);
     const year = parseInt(payload.year, 10) || 2026;
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
     const baseName = `Relatorio_Hospitalar_${payload.dayName}_${MESES[payload.monthName]}_${year}_${timestamp}`;
@@ -685,9 +692,42 @@ function gerarRelatorioDoc(payload) {
 }
 
 function salvarEGerarRelatorios(payload) {
+  assertReportPassword_(payload && payload.senha);
   const saveResult = salvarTudo(payload);
   if (saveResult.error) return saveResult;
   return gerarRelatorioDoc(payload);
+}
+
+function verificarSenhaRelatorio(data) {
+  assertReportPassword_(data && data.senha);
+  return { success: true };
+}
+
+function assertReportPassword_(password) {
+  const props = PropertiesService.getScriptProperties();
+  let salt = props.getProperty('REPORT_PASSWORD_SALT');
+  let expected = props.getProperty('REPORT_PASSWORD_HASH');
+  if (!salt || !expected) {
+    const initial = props.getProperty('REPORT_PASSWORD_INITIAL');
+    if (!initial) throw new Error('Senha do relatório ainda não configurada pelo administrador.');
+    if (String(password || '') !== initial) throw new Error('Senha incorreta.');
+    salt = Utilities.getUuid();
+    expected = sha256_(salt + ':' + initial);
+    props.setProperties({ REPORT_PASSWORD_SALT: salt, REPORT_PASSWORD_HASH: expected });
+    props.deleteProperty('REPORT_PASSWORD_INITIAL');
+    return;
+  }
+  if (sha256_(salt + ':' + String(password || '')) !== expected) {
+    throw new Error('Senha incorreta.');
+  }
+}
+
+function sha256_(text) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8);
+  return bytes.map(byte => {
+    const value = byte < 0 ? byte + 256 : byte;
+    return ('0' + value.toString(16)).slice(-2);
+  }).join('');
 }
 
 function testeConexao() {
